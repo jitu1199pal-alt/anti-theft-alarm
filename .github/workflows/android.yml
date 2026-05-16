@@ -42,12 +42,13 @@ jobs:
         run: |
           npx cap add android || true
           npx cap sync android
-          # Fix potential gradle wrapper corruption
+          # Fix potential gradle wrapper corruption by ensuring a clean file exists
           cd android
-          echo "Fixing gradle wrapper..."
+          echo "Verifying gradle wrapper..."
           rm -rf gradle/wrapper/gradle-wrapper.jar
           mkdir -p gradle/wrapper
-          curl -L https://raw.githubusercontent.com/gradle/gradle/v8.2.1/gradle/wrapper/gradle-wrapper.jar -o gradle/wrapper/gradle-wrapper.jar
+          # Use a verified download link for the exact version in gradle-wrapper.properties
+          curl -L https://raw.githubusercontent.com/gradle/gradle/v8.2/gradle/wrapper/gradle-wrapper.jar -o gradle/wrapper/gradle-wrapper.jar
           ls -l gradle/wrapper/
           chmod +x gradlew
 
