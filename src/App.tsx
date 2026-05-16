@@ -344,7 +344,7 @@ function SplashScreen() {
         <Zap size={64} className="text-black fill-current" />
       </motion.div>
       <div className="text-center">
-        <h1 className="text-4xl font-black tracking-tighter text-white uppercase italic">ChargeGuard<span className="text-[#00FF88]">.</span></h1>
+        <h1 className="text-4xl font-black tracking-tighter text-white uppercase italic">ChargeGuard Pro<span className="text-[#00FF88]">.</span></h1>
         <p className="text-slate-500 text-[10px] tracking-[0.4em] font-bold mt-2 uppercase">Core System v1.0.4</p>
       </div>
     </motion.div>
@@ -364,7 +364,7 @@ function HomeScreen({ battery, config, setConfig, isMonitoring, setMonitoring, s
           <div className="w-10 h-10 bg-accent rounded-xl flex items-center justify-center shadow-[0_0_15px_rgba(0,255,136,0.4)]">
              <Zap size={20} className="text-black" />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">ChargeGuard<span className="text-accent">.</span></h1>
+          <h1 className="text-2xl font-bold tracking-tight text-white">ChargeGuard Pro<span className="text-accent">.</span></h1>
         </div>
         <div className="flex gap-4">
           <div className="bg-slate-900/50 border border-slate-800 px-4 py-2 rounded-full flex items-center gap-2">

@@ -39,7 +39,6 @@ jobs:
       - name: Capacitor Sync & Production Config
         run: |
           npx cap add android || true
-          npx cap sync android
           
           # Stable Versioning for Play Store
           VERSION_CODE=${{ github.run_number }}
@@ -48,25 +47,32 @@ jobs:
           echo "Setting Version Code to $VERSION_CODE"
           echo "Setting Version Name to $VERSION_NAME"
           
-          # Use a safer regex to update versioning without breaking the file
-          sed -i "s/versionCode [0-9]*/versionCode $VERSION_CODE/" android/app/build.gradle
-          sed -i "s/versionName \"[0-9.]*\"/versionName \"$VERSION_NAME\"/" android/app/build.gradle
+          # Sync first to ensure folder exists
+          npx cap sync android
+          
+          # Precision replacement for versioning
+          sed -i "s/versionCode [0-9]*/versionCode $VERSION_CODE/g" android/app/build.gradle
+          sed -i "s/versionName \"[0-9.]*\"/versionName \"$VERSION_NAME\"/g" android/app/build.gradle
 
-      - name: Build Production App Bundle (AAB) & APK
+      - name: Build Play Store Bundle (AAB)
         run: |
           cd android
           chmod +x gradlew
-          # build both AAB (Play Store) and APK (Testing)
-          ./gradlew bundleRelease assembleRelease --stacktrace
+          ./gradlew bundleRelease --stacktrace
+
+      - name: Build Debug APK for Testing
+        run: |
+          cd android
+          ./gradlew assembleDebug --stacktrace
 
       - name: Upload Play Store Bundle (AAB)
         uses: actions/upload-artifact@v4
         with:
-          name: ChargeGuard-Pro-v1.0.${{ github.run_number }}-PlayStore-AAB
+          name: ChargeGuard-Pro-v1.0.${{ github.run_number }}-PlayStore
           path: android/app/build/outputs/bundle/release/app-release.aab
 
-      - name: Upload Installation APK
+      - name: Upload Testing APK (Debug)
         uses: actions/upload-artifact@v4
         with:
-          name: ChargeGuard-Pro-v1.0.${{ github.run_number }}-APK
-          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
+          name: ChargeGuard-Pro-v1.0.${{ github.run_number }}-Testing-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
