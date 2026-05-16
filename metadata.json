@@ -1,0 +1,6 @@
+{
+  "name": "Anti-Theft Charger Alarm Pro",
+  "description": "Premium high-security anti-theft charger alarm with background monitoring, smart battery health insights, and custom alert sounds.",
+  "requestFramePermissions": ["camera", "microphone", "geolocation", "screen-wake-lock"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
