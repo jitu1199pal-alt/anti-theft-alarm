@@ -37,16 +37,24 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>(Screen.SPLASH);
   const [theme, setTheme] = useState<Theme>('dark');
   const [lang, setLang] = useState<Language>(() => {
-    const saved = localStorage.getItem('language');
-    return (saved as Language) || 'en';
+    try {
+      const saved = localStorage.getItem('language');
+      return (saved as Language) || 'en';
+    } catch {
+      return 'en';
+    }
   });
-  const t = translations[lang];
+  const t = translations[lang] || translations.en;
   const [mainAudioContext, setMainAudioContext] = useState<AudioContext | null>(null);
   const battery = useBattery();
   const [wasCharging, setWasCharging] = useState(battery.charging);
   const [isMonitoring, setIsMonitoring] = useState(() => {
-    const saved = localStorage.getItem('isMonitoring');
-    return saved ? JSON.parse(saved) : false;
+    try {
+      const saved = localStorage.getItem('isMonitoring');
+      return saved ? JSON.parse(saved) : false;
+    } catch {
+      return false;
+    }
   }); 
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [showTempWarning, setShowTempWarning] = useState(false);
@@ -59,35 +67,36 @@ export default function App() {
 
   useEffect(() => {
     if (isNative) {
-      // Initialize AdMob for Native App
-      AdMob.initialize({
-        testingDevices: [],
-        initializeForTesting: true,
-      });
-
-      // Show Banner for Native App
-      const showBanner = async () => {
-        const options = {
-          adId: 'ca-app-pub-3940256099942544/6300978111', // Test Ad ID
-          adSize: BannerAdSize.ADAPTIVE_BANNER,
-          position: BannerAdPosition.BOTTOM_CENTER,
-          margin: 0,
-        };
+      const initNative = async () => {
         try {
-          await AdMob.showBanner(options);
+          // Initialize AdMob safely
+          await AdMob.initialize({
+            testingDevices: [],
+            initializeForTesting: true,
+          });
+
+          // Show Banner for Native App
+          const options = {
+            adId: 'ca-app-pub-3940256099942544/6300978111', // Test Ad ID
+            adSize: BannerAdSize.ADAPTIVE_BANNER,
+            position: BannerAdPosition.BOTTOM_CENTER,
+            margin: 0,
+          };
+          
+          await AdMob.showBanner(options).catch(e => console.log('Banner error', e));
+
+          // Handle App close/Background
+          CapApp.addListener('appStateChange', ({ isActive }) => {
+            if (!isActive && isMonitoring) {
+              console.log('App in background, but monitoring is ON');
+            }
+          });
         } catch (e) {
-          console.error('AdMob Error:', e);
+          console.error('Critical Native Init Error:', e);
         }
       };
       
-      showBanner();
-
-      // Handle App close/Background
-      CapApp.addListener('appStateChange', ({ isActive }) => {
-        if (!isActive && isMonitoring) {
-          console.log('App in background, but monitoring is ON');
-        }
-      });
+      initNative();
     }
   }, [isMonitoring, isNative]);
 
@@ -353,7 +362,7 @@ function SplashScreen({ t }: any) {
       </motion.div>
       <div className="text-center">
         <h1 className="text-4xl font-black tracking-tighter text-white uppercase italic">{t.appName}<span className="text-[#00FF88]">.</span></h1>
-        <p className="text-slate-500 text-[10px] tracking-[0.4em] font-bold mt-2 uppercase">{t.coreSystem} v1.0.12</p>
+        <p className="text-slate-500 text-[10px] tracking-[0.4em] font-bold mt-2 uppercase">{t.coreSystem} v1.0.13</p>
       </div>
     </motion.div>
   );
@@ -553,7 +562,7 @@ function HomeScreen({ battery, config, setConfig, isMonitoring, setMonitoring, s
 
       <footer className="mt-8 flex justify-between items-center text-slate-500 text-[10px] font-bold uppercase tracking-widest">
         <span>{t.mode}: <span className="text-accent">Auto</span></span>
-        <span className="flex items-center gap-2 italic text-slate-600">v1.0.12-{t.stable}</span>
+        <span className="flex items-center gap-2 italic text-slate-600">v1.0.13-{t.stable}</span>
       </footer>
     </motion.div>
   );
