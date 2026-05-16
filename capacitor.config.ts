@@ -9,7 +9,7 @@ const config: CapacitorConfig = {
   },
   plugins: {
     AdMob: {
-      initializeForTesting: false
+      initializeForTesting: true
     }
   }
 };

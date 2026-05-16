@@ -1,0 +1,13 @@
+{
+	"appId": "com.chargeguard.pro.alarm",
+	"appName": "ChargeGuard Pro",
+	"webDir": "dist",
+	"server": {
+		"androidScheme": "https"
+	},
+	"plugins": {
+		"AdMob": {
+			"initializeForTesting": true
+		}
+	}
+}

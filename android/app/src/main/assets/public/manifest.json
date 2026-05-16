@@ -1,0 +1,23 @@
+{
+  "name": "Anti-Theft Charger Alarm Pro",
+  "short_name": "Alarm Pro",
+  "description": "Professional high-security anti-theft charger alarm system.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#00FF88",
+  "icons": [
+    {
+      "src": "https://api.dicebear.com/7.x/shapes/svg?seed=alarm&backgroundColor=00ff88",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://api.dicebear.com/7.x/shapes/svg?seed=alarm&backgroundColor=00ff88",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
