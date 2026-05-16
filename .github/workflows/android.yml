@@ -44,8 +44,11 @@ jobs:
           npx cap sync android
           # Fix potential gradle wrapper corruption
           cd android
+          echo "Fixing gradle wrapper..."
+          rm -rf gradle/wrapper/gradle-wrapper.jar
           mkdir -p gradle/wrapper
           curl -L https://raw.githubusercontent.com/gradle/gradle/v8.2.1/gradle/wrapper/gradle-wrapper.jar -o gradle/wrapper/gradle-wrapper.jar
+          ls -l gradle/wrapper/
           chmod +x gradlew
 
       - name: Build Play Store Bundle (AAB) & Testing APK
