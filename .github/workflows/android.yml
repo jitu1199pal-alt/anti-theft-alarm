@@ -40,22 +40,33 @@ jobs:
         run: |
           npx cap add android || true
           npx cap sync android
-          # Precision replacement for versioning to avoid corrupting build.gradle
-          echo "Updating build.gradle versioning..."
-          sed -i 's/versionCode [0-9]*/versionCode ${{ github.run_number }}/g' android/app/build.gradle
-          sed -i 's/versionName "[0-9.]*"/versionName "1.0.${{ github.run_number }}"/g' android/app/build.gradle
-          # Verify the change
-          grep "versionCode" android/app/build.gradle
+          
+          # Stable Versioning for Play Store
+          VERSION_CODE=${{ github.run_number }}
+          VERSION_NAME="1.0.${{ github.run_number }}"
+          
+          echo "Setting Version Code to $VERSION_CODE"
+          echo "Setting Version Name to $VERSION_NAME"
+          
+          # Use a safer regex to update versioning without breaking the file
+          sed -i "s/versionCode [0-9]*/versionCode $VERSION_CODE/" android/app/build.gradle
+          sed -i "s/versionName \"[0-9.]*\"/versionName \"$VERSION_NAME\"/" android/app/build.gradle
 
-      - name: Build Production APK (Unsigned)
+      - name: Build Production App Bundle (AAB) & APK
         run: |
           cd android
           chmod +x gradlew
-          # Clean before build and use release variant
-          ./gradlew clean assembleRelease --stacktrace --info
+          # build both AAB (Play Store) and APK (Testing)
+          ./gradlew bundleRelease assembleRelease --stacktrace
 
-      - name: Upload Production APK
+      - name: Upload Play Store Bundle (AAB)
         uses: actions/upload-artifact@v4
         with:
-          name: ChargeGuard-Pro-v1.0.${{ github.run_number }}-Build-${{ github.run_id }}
+          name: ChargeGuard-Pro-v1.0.${{ github.run_number }}-PlayStore-AAB
+          path: android/app/build/outputs/bundle/release/app-release.aab
+
+      - name: Upload Installation APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ChargeGuard-Pro-v1.0.${{ github.run_number }}-APK
           path: android/app/build/outputs/apk/release/app-release-unsigned.apk
