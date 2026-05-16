@@ -20,10 +20,8 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          npm install -g npm@latest
-          rm -rf node_modules package-lock.json
-          npm cache clean --force
-          npm install --legacy-peer-deps --include=optional
+          rm -f package-lock.json
+          npm install --legacy-peer-deps
 
       - name: Compile React Code (Native Requirement)
         run: npm run build
