@@ -40,15 +40,14 @@ jobs:
 
       - name: Capacitor Sync & Fix Wrapper
         run: |
-          npx cap add android || true
           npx cap sync android
           # Fix potential gradle wrapper corruption by ensuring a clean file exists
           cd android
           echo "Verifying gradle wrapper..."
           rm -rf gradle/wrapper/gradle-wrapper.jar
           mkdir -p gradle/wrapper
-          # Use a verified download link for the exact version in gradle-wrapper.properties
-          curl -L https://raw.githubusercontent.com/gradle/gradle/v8.2/gradle/wrapper/gradle-wrapper.jar -o gradle/wrapper/gradle-wrapper.jar
+          # Use a verified download link from the v8.5 tag as it is stable
+          curl -L https://github.com/gradle/gradle/raw/v8.5/gradle/wrapper/gradle-wrapper.jar -o gradle/wrapper/gradle-wrapper.jar
           ls -l gradle/wrapper/
           chmod +x gradlew
 
