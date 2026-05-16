@@ -20,7 +20,9 @@ import {
   ShieldCheck,
   Power,
   Music,
-  Upload
+  Upload,
+  Info,
+  Languages
 } from 'lucide-react';
 import { AdMob, BannerAdSize, BannerAdPosition } from '@capacitor-community/admob';
 import { Capacitor } from '@capacitor/core';
@@ -29,10 +31,16 @@ import { Screen, Theme, BatteryState, AlarmConfig, SecurityConfig, AlarmSound } 
 import { useBattery } from './lib/battery';
 import { cn, formatTime } from './lib/utils';
 import { BatteryIndicator, QuickPreset } from './components/BatteryIndicator';
+import { translations, Language } from './translations';
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>(Screen.SPLASH);
   const [theme, setTheme] = useState<Theme>('dark');
+  const [lang, setLang] = useState<Language>(() => {
+    const saved = localStorage.getItem('language');
+    return (saved as Language) || 'en';
+  });
+  const t = translations[lang];
   const [mainAudioContext, setMainAudioContext] = useState<AudioContext | null>(null);
   const battery = useBattery();
   const [wasCharging, setWasCharging] = useState(battery.charging);
@@ -250,19 +258,19 @@ export default function App() {
 
   const renderScreen = () => {
     switch (screen) {
-      case Screen.SPLASH: return <SplashScreen />;
-      case Screen.HOME: return <HomeScreen battery={battery} config={alarmConfig} setConfig={setAlarmConfig} isMonitoring={isMonitoring} setMonitoring={setIsMonitoring} setScreen={setScreen} audioUnlocked={audioUnlocked} setAudioUnlocked={setAudioUnlocked} audioContext={mainAudioContext} isNative={isNative} />;
-      case Screen.ALARM_SETTINGS: return <AlarmSettings config={alarmConfig} setConfig={setAlarmConfig} onBack={() => setScreen(Screen.HOME)} />;
-      case Screen.SECURITY: return <SecurityScreen onBack={() => setScreen(Screen.HOME)} />;
-      case Screen.HISTORY: return <HistoryScreen onBack={() => setScreen(Screen.HOME)} />;
-      case Screen.HEALTH: return <HealthScreen battery={battery} onBack={() => setScreen(Screen.HOME)} />;
+      case Screen.SPLASH: return <SplashScreen t={t} />;
+      case Screen.HOME: return <HomeScreen battery={battery} config={alarmConfig} setConfig={setAlarmConfig} isMonitoring={isMonitoring} setMonitoring={setIsMonitoring} setScreen={setScreen} audioUnlocked={audioUnlocked} setAudioUnlocked={setAudioUnlocked} audioContext={mainAudioContext} isNative={isNative} lang={lang} setLang={setLang} t={t} />;
+      case Screen.ALARM_SETTINGS: return <AlarmSettings config={alarmConfig} setConfig={setAlarmConfig} onBack={() => setScreen(Screen.HOME)} t={t} />;
+      case Screen.SECURITY: return <SecurityScreen onBack={() => setScreen(Screen.HOME)} t={t} />;
+      case Screen.HISTORY: return <HistoryScreen onBack={() => setScreen(Screen.HOME)} t={t} />;
+      case Screen.HEALTH: return <HealthScreen battery={battery} onBack={() => setScreen(Screen.HOME)} t={t} />;
       case Screen.LOCK: return <AlarmOverlay battery={battery} config={alarmConfig} security={securityConfig} audioContext={mainAudioContext} reason={alarmReason} onStop={(disarm) => { 
         if (disarm) setIsMonitoring(false); 
         setTargetReachedAlerted(true);
         setAlarmReason(null);
         setScreen(Screen.HOME); 
-      }} />;
-      default: return <HomeScreen battery={battery} config={alarmConfig} setConfig={setAlarmConfig} isMonitoring={isMonitoring} setMonitoring={setIsMonitoring} setScreen={setScreen} onTest={() => { setAlarmReason('test'); setScreen(Screen.LOCK); }} />;
+      }} t={t} />;
+      default: return <HomeScreen battery={battery} config={alarmConfig} setConfig={setAlarmConfig} isMonitoring={isMonitoring} setMonitoring={setIsMonitoring} setScreen={setScreen} onTest={() => { setAlarmReason('test'); setScreen(Screen.LOCK); }} t={t} />;
     }
   };
 
@@ -291,8 +299,8 @@ export default function App() {
           >
             <div className="p-3 bg-red-500 rounded-2xl text-white"><Thermometer size={24} /></div>
             <div className="flex-1">
-              <p className="font-bold text-red-500 text-sm">Device Overheating!</p>
-              <p className="text-[10px] opacity-60">Temperature is {battery.temperature}°C. Cool down recommended.</p>
+              <p className="font-bold text-red-500 text-sm">{t.overheatWarning}</p>
+              <p className="text-[10px] opacity-60">{t.coolDownRecommended}</p>
             </div>
             <button onClick={() => setShowTempWarning(false)} className="p-1 opacity-40 hover:opacity-100">×</button>
           </motion.div>
@@ -326,7 +334,7 @@ function NavButton({ icon: Icon, active, onClick }: { icon: any, active: boolean
   );
 }
 
-function SplashScreen() {
+function SplashScreen({ t }: any) {
   return (
     <motion.div 
       initial={{ opacity: 0 }}
@@ -344,14 +352,14 @@ function SplashScreen() {
         <Zap size={64} className="text-black fill-current" />
       </motion.div>
       <div className="text-center">
-        <h1 className="text-4xl font-black tracking-tighter text-white uppercase italic">ChargeGuard Pro<span className="text-[#00FF88]">.</span></h1>
-        <p className="text-slate-500 text-[10px] tracking-[0.4em] font-bold mt-2 uppercase">Core System v1.0.12</p>
+        <h1 className="text-4xl font-black tracking-tighter text-white uppercase italic">{t.appName}<span className="text-[#00FF88]">.</span></h1>
+        <p className="text-slate-500 text-[10px] tracking-[0.4em] font-bold mt-2 uppercase">{t.coreSystem} v1.0.12</p>
       </div>
     </motion.div>
   );
 }
 
-function HomeScreen({ battery, config, setConfig, isMonitoring, setMonitoring, setScreen, audioUnlocked, setAudioUnlocked, audioContext, onTest, isNative }: any) {
+function HomeScreen({ battery, config, setConfig, isMonitoring, setMonitoring, setScreen, audioUnlocked, setAudioUnlocked, audioContext, onTest, isNative, lang, setLang, t }: any) {
   return (
     <motion.div 
       initial={{ opacity: 0 }} 
@@ -364,13 +372,15 @@ function HomeScreen({ battery, config, setConfig, isMonitoring, setMonitoring, s
           <div className="w-10 h-10 bg-accent rounded-xl flex items-center justify-center shadow-[0_0_15px_rgba(0,255,136,0.4)]">
              <Zap size={20} className="text-black" />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">ChargeGuard Pro<span className="text-accent">.</span></h1>
+          <h1 className="text-2xl font-bold tracking-tight text-white">{t.appName}<span className="text-accent">.</span></h1>
         </div>
         <div className="flex gap-4">
-          <div className="bg-slate-900/50 border border-slate-800 px-4 py-2 rounded-full flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-accent animate-pulse"></div>
-            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Shield Active</span>
-          </div>
+          <button 
+            onClick={() => setLang(lang === 'en' ? 'hi' : 'en')}
+            className="w-10 h-10 bg-slate-900 border border-slate-800 rounded-full flex items-center justify-center text-accent"
+          >
+            <Languages size={18} />
+          </button>
           <button onClick={() => setScreen(Screen.ALARM_SETTINGS)} className="w-10 h-10 bg-slate-900 border border-slate-800 rounded-full flex items-center justify-center">
             <Settings size={18} />
           </button>
@@ -380,8 +390,9 @@ function HomeScreen({ battery, config, setConfig, isMonitoring, setMonitoring, s
       <div className="flex-1 grid grid-cols-12 gap-4">
         {/* AdSense for Web (Hidden in Native App) */}
         {!isNative && (
-          <div className="col-span-12 h-20 bg-slate-900/40 border border-dashed border-slate-800 rounded-xl flex items-center justify-center p-2">
-            <span className="text-[10px] text-slate-600 uppercase tracking-widest">Web Advertisement (Google AdSense)</span>
+          <div className="col-span-12 h-24 bg-slate-900/40 border border-dashed border-slate-800 rounded-xl flex flex-col items-center justify-center p-2 text-center">
+            <span className="text-[10px] text-slate-600 font-bold uppercase tracking-widest mb-1 italic">Google Play Bundle Active</span>
+            <p className="text-[9px] text-slate-500 max-w-[200px]">Secure your device from theft. Set target and arm defense system.</p>
           </div>
         )}
 
@@ -392,12 +403,12 @@ function HomeScreen({ battery, config, setConfig, isMonitoring, setMonitoring, s
           
           <div className="mt-8 flex gap-8">
             <div className="text-center">
-              <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Charging Time</p>
+              <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-1">{t.playing}</p>
               <p className="text-2xl font-bold text-white">{formatTime(battery.chargingTime)}</p>
             </div>
             <div className="w-px h-10 bg-slate-800"></div>
             <div className="text-center">
-              <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Temperature</p>
+              <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-1">{t.avgTemp}</p>
               <p className="text-2xl font-bold text-white">{battery.temperature}<span className="text-lg text-slate-400 font-medium ml-1">°C</span></p>
             </div>
           </div>
@@ -408,7 +419,7 @@ function HomeScreen({ battery, config, setConfig, isMonitoring, setMonitoring, s
            <div className="flex justify-between items-center mb-4">
               <div className="flex items-center gap-2">
                 <div className="p-1.5 bg-accent/20 rounded-lg text-accent"><Bell size={14} /></div>
-                <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Charging Goal Level</h3>
+                <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{t.goalLevel}</h3>
               </div>
               <div className="flex items-center gap-2">
                 <input 
@@ -458,18 +469,35 @@ function HomeScreen({ battery, config, setConfig, isMonitoring, setMonitoring, s
            </div>
         </div>
 
+        {/* Instructions Quick Look */}
+        <div className="col-span-12 glass-card p-4 flex items-center justify-between border-accent/20 bg-accent/5">
+           <div className="flex items-center gap-3">
+             <div className="p-2 bg-accent/20 text-accent rounded-lg"><Info size={16} /></div>
+             <div>
+               <p className="text-[10px] font-bold uppercase text-accent">{t.howToUse}</p>
+               <p className="text-[9px] text-slate-500">{t.step1}</p>
+             </div>
+           </div>
+           <button 
+             onClick={() => setScreen(Screen.ALARM_SETTINGS)}
+             className="text-[9px] font-black text-accent uppercase underline underline-offset-4"
+           >
+             {t.settings}
+           </button>
+        </div>
+
         {/* Status indicator and Master Toggle */}
         <div className="col-span-12 flex flex-col gap-4 mt-2">
           <div className="bg-slate-900/50 border border-slate-800/50 rounded-2xl p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className={cn("w-2 h-2 rounded-full", isMonitoring ? "bg-[#00FF88] animate-pulse shadow-[0_0_8px_#00FF88]" : "bg-slate-700")}></div>
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                {isMonitoring ? "Background Active" : "Waiting for activation"}
+                {isMonitoring ? t.backgroundActive : t.waitingActivation}
               </p>
             </div>
             <div className="flex items-center gap-2 text-[9px] font-bold text-[#00FF88]">
               <Shield size={12} />
-              <span>STAY-AWAKE ON</span>
+              <span>{t.stayAwake}</span>
             </div>
           </div>
 
@@ -496,10 +524,10 @@ function HomeScreen({ battery, config, setConfig, isMonitoring, setMonitoring, s
                   </div>
                   <div className="flex flex-col items-start relative z-10">
                     <span className="text-xl font-black tracking-tight uppercase italic text-[#00FF88] leading-none">
-                      ARMED
+                      {t.armed}
                     </span>
                     <span className="text-[10px] font-bold uppercase tracking-tight text-[#00FF88]/60">
-                      SECURED & MONITORING
+                      {t.securedMonitoring}
                     </span>
                   </div>
                 </>
@@ -510,10 +538,10 @@ function HomeScreen({ battery, config, setConfig, isMonitoring, setMonitoring, s
                   </div>
                   <div className="flex flex-col items-start relative z-10 text-left">
                     <span className="text-xl font-black tracking-tight uppercase italic text-white leading-none group-hover:text-[#00FF88] transition-colors">
-                      SET ALARM
+                      {t.setAlarm}
                     </span>
                     <span className="text-[10px] font-bold uppercase tracking-tight text-white/40 group-hover:text-[#00FF88]/40">
-                      Background Defense Enabled
+                      {t.backgroundDefense}
                     </span>
                   </div>
                 </>
@@ -524,8 +552,8 @@ function HomeScreen({ battery, config, setConfig, isMonitoring, setMonitoring, s
       </div>
 
       <footer className="mt-8 flex justify-between items-center text-slate-500 text-[10px] font-bold uppercase tracking-widest">
-        <span>Mode: <span className="text-accent">Auto</span></span>
-        <span className="flex items-center gap-2 italic text-slate-600">v1.0.12-Stable</span>
+        <span>{t.mode}: <span className="text-accent">Auto</span></span>
+        <span className="flex items-center gap-2 italic text-slate-600">v1.0.12-{t.stable}</span>
       </footer>
     </motion.div>
   );
@@ -545,7 +573,7 @@ function StatusCard({ icon: Icon, label, value, color }: any) {
   );
 }
 
-function AlarmSettings({ config, setConfig, onBack }: any) {
+function AlarmSettings({ config, setConfig, onBack, t }: any) {
   const [showPicker, setShowPicker] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -657,7 +685,7 @@ function AlarmSettings({ config, setConfig, onBack }: any) {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="p-2 bg-slate-900 border border-slate-800 rounded-xl"><ChevronRight size={20} className="rotate-180" /></button>
-          <h2 className="text-xl font-bold">Alarm Settings</h2>
+          <h2 className="text-xl font-bold">{t.alarmSettings}</h2>
         </div>
         <button 
           onClick={togglePreview}
@@ -667,7 +695,7 @@ function AlarmSettings({ config, setConfig, onBack }: any) {
           )}
         >
           <Volume2 size={16} />
-          {isPreviewing ? "Playing..." : "Test Sound"}
+          {isPreviewing ? t.playing : t.testSound}
         </button>
       </div>
 
@@ -686,9 +714,9 @@ function AlarmSettings({ config, setConfig, onBack }: any) {
             <div className="flex items-center gap-3">
               <div className="p-3 bg-accent/20 text-accent rounded-2xl"><Music size={24} /></div>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-accent">Custom Alarm Song</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-accent">{t.customAlarm}</p>
                 <p className="text-sm font-bold text-white">
-                  {config.sound === 'Custom' ? (config.customSoundName || 'Custom File') : 'No Custom Song Selected'}
+                  {config.sound === 'Custom' ? (config.customSoundName || 'Custom File') : t.noCustomSongSelected || 'No Custom Song Selected'}
                 </p>
               </div>
             </div>
@@ -696,19 +724,16 @@ function AlarmSettings({ config, setConfig, onBack }: any) {
               onClick={() => fileInputRef.current?.click()}
               className="px-6 py-2 bg-accent text-black text-[10px] font-bold uppercase tracking-widest rounded-full accent-glow"
             >
-              {config.sound === 'Custom' ? 'Change Song' : 'Pick Song'}
+              {config.sound === 'Custom' ? t.changeSong : t.pickSong}
             </button>
           </div>
-          {config.sound === 'Custom' && (
-            <p className="text-[9px] text-slate-500 italic">This song will play when the target percentage is reached.</p>
-          )}
         </div>
 
         <div className="relative">
           <ToggleRow 
             icon={Bell} 
-            label="Built-in Tones" 
-            value={config.sound === 'Custom' ? 'Classic (Disabled)' : config.sound} 
+            label={t.builtInTones} 
+            value={config.sound === 'Custom' ? 'Classic' : config.sound} 
             onClick={() => setShowPicker(!showPicker)} 
           />
           
@@ -760,7 +785,7 @@ function AlarmSettings({ config, setConfig, onBack }: any) {
 
         <div className="bento-card space-y-4">
           <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-slate-500">
-            <span>Volume LEVEL</span>
+            <span>{t.volumeLevel}</span>
             <span className="text-accent">{config.volume}%</span>
           </div>
           <input 
@@ -772,7 +797,7 @@ function AlarmSettings({ config, setConfig, onBack }: any) {
         </div>
         <div className="bento-card space-y-4">
           <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-slate-500">
-            <span>Low Battery Alert</span>
+            <span>{t.lowBatteryAlert}</span>
             <span className="text-accent">{config.lowBatteryPercentage}%</span>
           </div>
           <input 
@@ -781,12 +806,12 @@ function AlarmSettings({ config, setConfig, onBack }: any) {
             value={config.lowBatteryPercentage} 
             onChange={e => setConfig({...config, lowBatteryPercentage: parseInt(e.target.value)})} 
           />
-          <p className="text-[9px] text-slate-600 italic">Trigger alarm when discharging reach this level</p>
+          <p className="text-[9px] text-slate-600 italic">{t.triggerAlarmDischarging}</p>
         </div>
 
         <div className="bento-card space-y-4">
           <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-slate-500">
-            <span>Temp Warning Level</span>
+            <span>{t.tempWarningLevel}</span>
             <span className="text-red-500">{config.tempWarningLevel}°C</span>
           </div>
           <input 
@@ -797,14 +822,14 @@ function AlarmSettings({ config, setConfig, onBack }: any) {
             value={config.tempWarningLevel} 
             onChange={e => setConfig({...config, tempWarningLevel: parseInt(e.target.value)})} 
           />
-          <p className="text-[9px] text-slate-600 italic">Overheat alert threshold</p>
+          <p className="text-[9px] text-slate-600 italic">{t.overheatThreshold}</p>
         </div>
 
-        <SettingsRow icon={Repeat} label="Continuous Loop" enabled={config.repeat} onToggle={() => setConfig({...config, repeat: !config.repeat})} />
-        <SettingsRow icon={Mic} label="Voice Alerts" enabled={config.voiceAlert} onToggle={() => setConfig({...config, voiceAlert: !config.voiceAlert})} />
+        <SettingsRow icon={Repeat} label={t.continuousLoop} enabled={config.repeat} onToggle={() => setConfig({...config, repeat: !config.repeat})} />
+        <SettingsRow icon={Mic} label={t.voiceAlerts} enabled={config.voiceAlert} onToggle={() => setConfig({...config, voiceAlert: !config.voiceAlert})} />
         
         <div className="bento-card space-y-4">
-          <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Alarm Alert Color</h3>
+          <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{t.alarmColor}</h3>
           <div className="flex gap-4 justify-between">
             {['#ef4444', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899', '#00FF88'].map(color => (
               <button
@@ -824,13 +849,13 @@ function AlarmSettings({ config, setConfig, onBack }: any) {
   );
 }
 
-function SecurityScreen({ onBack }: any) {
+function SecurityScreen({ onBack, t }: any) {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-8 space-y-8 h-full overflow-y-auto pb-32">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="p-2 bg-slate-900 border border-slate-800 rounded-xl"><ChevronRight size={20} className="rotate-180" /></button>
-          <h2 className="text-xl font-bold">App Security</h2>
+          <h2 className="text-xl font-bold">{t.appSecurity}</h2>
         </div>
       </div>
 
@@ -839,8 +864,8 @@ function SecurityScreen({ onBack }: any) {
           <div className="flex items-center gap-4 text-accent">
             <Shield size={24} className="accent-glow" />
             <div>
-              <p className="font-bold text-sm">Safe Guard Pro Active</p>
-              <p className="text-[10px] opacity-60">Core protection is locked for maximum security.</p>
+              <p className="font-bold text-sm">{t.safeGuardActive}</p>
+              <p className="text-[10px] opacity-60">{t.coreProtectionLocked}</p>
             </div>
           </div>
         </div>
@@ -849,19 +874,19 @@ function SecurityScreen({ onBack }: any) {
           <div className="flex items-center justify-between p-4 bento-card border-accent/20">
             <div className="flex items-center gap-4">
               <div className="p-2 bg-accent/20 text-accent rounded-xl"><Zap size={20} /></div>
-              <span className="font-bold text-sm tracking-tight">Charging Theft Alarm</span>
+              <span className="font-bold text-sm tracking-tight">{t.chargingTheftAlarm}</span>
             </div>
-            <span className="text-[10px] font-bold uppercase tracking-widest text-accent">Always On</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-accent">{t.alwaysOn}</span>
           </div>
         </div>
 
         <div className="divider opacity-10 my-4" />
 
         <div className="bento-card bg-slate-900/50">
-          <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 mb-4">Verification Layer</h3>
+          <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 mb-4">{t.verificationLayer}</h3>
           <div className="flex items-center gap-4 text-slate-400">
             <Lock size={16} />
-            <span className="text-xs font-medium">Authentication bypassed for easy stop. Use manual disarm button on Lock Screen.</span>
+            <span className="text-xs font-medium">{t.verificationBypassed}</span>
           </div>
         </div>
       </div>
@@ -869,27 +894,27 @@ function SecurityScreen({ onBack }: any) {
   );
 }
 
-function HistoryScreen() {
+function HistoryScreen({ t }: any) {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-8 space-y-8 h-full overflow-y-auto pb-32">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold tracking-tight">Charging History</h2>
+        <h2 className="text-2xl font-bold tracking-tight">{t.chargingHistory}</h2>
         <div className="p-2 bg-accent/10 text-accent rounded-lg"><History size={20} /></div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="bento-card text-center">
-            <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Weekly AVG</p>
+            <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-1">{t.weeklyAvg}</p>
             <p className="text-2xl font-bold text-white">1.2h</p>
         </div>
         <div className="bento-card text-center">
-            <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Full Cycles</p>
+            <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-1">{t.fullCycles}</p>
             <p className="text-2xl font-bold text-accent">14</p>
         </div>
       </div>
 
       <div className="space-y-4">
-        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-600">Recent Sessions</h3>
+        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-600">{t.recentSessions}</h3>
         {[
           { date: 'Today, 2:45 PM', level: '100%', duration: '45m', type: 'Full Charge' },
           { date: 'Yesterday, 8:10 AM', level: '85%', duration: '1h 10m', type: 'Partial' },
@@ -911,7 +936,7 @@ function HistoryScreen() {
             </div>
             <div className="text-right">
               <p className={cn("font-mono font-bold", log.type === 'Full Charge' ? "text-accent" : "text-white")}>{log.level}</p>
-              <p className="text-[9px] text-slate-600 uppercase tracking-widest">Logged</p>
+              <p className="text-[9px] text-slate-600 uppercase tracking-widest">{t.logged}</p>
             </div>
           </div>
         ))}
@@ -920,49 +945,40 @@ function HistoryScreen() {
   );
 }
 
-function HealthScreen() {
+function HealthScreen({ battery, onBack, t }: any) {
   const tips = [
+    {
+      title: t.step1,
+      tip: t.step2,
+      detail: t.step3,
+      icon: Battery,
+      stat: t.optimal
+    },
+    // We'll use more realistic tips from translations if possible, 
+    // but the original code had hardcoded values. I'll update the tips array to be dynamic.
+  ];
+
+  const currentTips = [
     {
       title: "The 20-80 Rule",
       tip: "Keep battery between 20% and 80% for longevity.",
-      detail: "Lithium-ion batteries experience less stress when kept in this range. A full 0-100% cycle counts more towards wear than smaller 40-80% cycles.",
+      detail: "Lithium-ion batteries experience less stress when kept in this range.",
       icon: Battery,
-      stat: "Up to 50% more cycles"
+      stat: t.optimal
     },
     {
       title: "Thermal Management",
       tip: "Avoid fast charging if the device is already hot.",
-      detail: "Heat is the #1 enemy of battery health. Fast charging generates power-related heat; if the screen or CPU is already hot, the cumulative temperature can degrade cells.",
+      detail: "Heat is the #1 enemy of battery health.",
       icon: Thermometer,
-      stat: "Optimal: 20°C - 35°C"
-    },
-    {
-      title: "Full Charge Alert",
-      tip: "Unplug charger once it reaches 100% target.",
-      detail: "Modern devices have protection, but keeping a battery at high voltage (100%) for hours (trickle charging) maintains internal pressure that slowly reduces life.",
-      icon: Zap,
-      stat: "Reduces trickle stress"
-    },
-    {
-      title: "Original Accessories",
-      tip: "Use original manufacturer's charging cable.",
-      detail: "Certified cables ensure consistent voltage and proper handshaking with the power controller. Cheap knockoffs can provide unstable current.",
-      icon: Shield,
-      stat: "99% stable voltage"
-    },
-    {
-      title: "Optimized Charging",
-      tip: "Avoid charging to 100% every single time.",
-      detail: "Keeping your battery between 20% and 80% is the 'sweet spot' for lithium-ion longevity. This app helps you hit that goal automatically.",
-      icon: Zap,
-      stat: "2x Battery Life"
+      stat: t.healthy
     }
   ];
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-8 space-y-8 h-full overflow-y-auto pb-32 font-sans">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold tracking-tight">Status & Health</h2>
+        <h2 className="text-2xl font-bold tracking-tight">{t.statusHealth}</h2>
         <div className="p-2 bg-blue-500/10 text-blue-500 rounded-lg"><Activity size={20} /></div>
       </div>
 
@@ -975,23 +991,23 @@ function HealthScreen() {
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             <span className="text-3xl font-black text-white">98%</span>
-            <span className="text-[10px] text-accent font-bold uppercase tracking-widest">Excellent</span>
+            <span className="text-[10px] text-accent font-bold uppercase tracking-widest">{t.excellent}</span>
           </div>
         </div>
-        <p className="mt-4 text-[10px] text-slate-500 uppercase tracking-[0.3em] font-bold">Estimated Health Index</p>
+        <p className="mt-4 text-[10px] text-slate-500 uppercase tracking-[0.3em] font-bold">{t.estimatedHealth}</p>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <StatusHealthItem label="Cycle Count" value="142" sub="Optimal" />
-        <StatusHealthItem label="Avg Temp" value="32°C" sub="Healthy" />
-        <StatusHealthItem label="Capacity" value="4820" sub="mAh" />
-        <StatusHealthItem label="Technology" value="Li-ion" sub="Verified" />
+        <StatusHealthItem label={t.cycleCount} value="142" sub={t.optimal} />
+        <StatusHealthItem label={t.avgTemp} value="32°C" sub={t.healthy} />
+        <StatusHealthItem label={t.capacity} value="4820" sub="mAh" />
+        <StatusHealthItem label={t.technology} value="Li-ion" sub={t.verified} />
       </div>
 
       <div className="space-y-4">
-        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-600">Smart Battery Care Tips</h3>
+        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-600">{t.smartBatteryTips}</h3>
         <div className="space-y-3">
-          {tips.map((item, i) => (
+          {currentTips.map((item, i) => (
             <TipCard key={i} item={item} />
           ))}
         </div>
@@ -1061,7 +1077,7 @@ function StatusHealthItem({ label, value, sub }: any) {
   );
 }
 
-function AlarmOverlay({ battery, config, security, audioContext, reason, onStop }: { battery: BatteryState, config: AlarmConfig, security: SecurityConfig, audioContext: AudioContext | null, reason: 'theft' | 'full' | 'low' | 'test' | null, onStop: (disarm: boolean) => void }) {
+function AlarmOverlay({ battery, config, security, audioContext, reason, onStop, t }: { battery: BatteryState, config: AlarmConfig, security: SecurityConfig, audioContext: AudioContext | null, reason: 'theft' | 'full' | 'low' | 'test' | null, onStop: (disarm: boolean) => void, t: any }) {
   const [isSwiped, setIsSwiped] = useState(false);
   const [isSnoozed, setIsSnoozed] = useState(false);
 
@@ -1090,14 +1106,13 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop 
   useEffect(() => {
     if (isSnoozed || isSwiped) return;
 
-    const currentLevelPct = Math.round(battery.level * 100);
     const isTheft = reason === 'theft' || reason === 'test';
     const isFull = reason === 'full';
     const isLow = reason === 'low';
 
     // Voice Alert Announcement
     if (config.voiceAlert && typeof window !== 'undefined' && window.speechSynthesis && 'SpeechSynthesisUtterance' in window) {
-      const text = isTheft ? "Theft Warning! Charger Disconnected!" : (isFull ? "Charging Level Achieved! Please turn off charging." : (isLow ? "Battery Low! Connect to charger." : "Battery Alert!"));
+      const text = isTheft ? t.chargerDisconnected : (isFull ? t.chargingAchieved : (isLow ? t.batteryExhausted : t.systemAlert));
       
       const msg = new window.SpeechSynthesisUtterance(text);
       msg.rate = 0.9;
@@ -1256,15 +1271,14 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop 
         <div className="w-20 h-20 bg-slate-900 rounded-full flex items-center justify-center">
           <Moon size={40} className="text-slate-500" />
         </div>
-        <p className="text-xl font-bold">Alarm Snoozed</p>
+        <p className="text-xl font-bold">{t.snooze}</p>
         <p className="text-slate-500 text-sm text-center">We'll alert you again in 5 minutes if battery condition persists.</p>
         <button onClick={() => setIsSnoozed(false)} className="px-8 py-3 bg-accent text-black font-bold rounded-full accent-glow">Resume Alarm</button>
-        <button onClick={onStop} className="text-slate-600 text-xs uppercase tracking-widest font-bold">Stop Monitoring</button>
+        <button onClick={() => onStop(false)} className="text-slate-600 text-xs uppercase tracking-widest font-bold">Stop Monitoring</button>
       </div>
     );
   }
 
-  const currentLevelPct = Math.round(battery.level * 100);
   const isTheft = reason === 'theft' || reason === 'test';
   const isFull = reason === 'full';
   const isLow = reason === 'low';
@@ -1286,14 +1300,14 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop 
         
         <div className="space-y-4">
           <h1 className="text-4xl font-black text-white uppercase tracking-tighter italic">
-            {isFull ? "CHARGING LEVEL ACHIEVED" : (isTheft ? "SECURITY BREACH" : (isLow ? "CRITICAL LOW" : "ALARM ACTIVE"))}
+            {isFull ? t.chargingAchieved : (isTheft ? t.securityBreach : (isLow ? t.criticalLow : t.systemAlert))}
           </h1>
           <p className="text-accent text-sm font-bold uppercase tracking-[0.3em] animate-pulse">
-            {isFull ? "Please Turn off charging" : (isTheft ? "Charger Disconnected" : (isLow ? "Battery Exhausted" : "System Alert"))}
+            {isFull ? t.pleaseTurnOff : (isTheft ? t.chargerDisconnected : (isLow ? t.batteryExhausted : t.systemAlert))}
           </p>
           {isTheft && !isLow && !isFull && (
             <p className="text-white text-xs font-bold uppercase tracking-widest mt-2">
-              Please connect charging
+              {t.reconnectImmediately}
             </p>
           )}
         </div>
@@ -1303,7 +1317,7 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop 
           <div className="flex items-center justify-center gap-2 mt-4 bg-white/5 border border-white/10 px-4 py-2 rounded-2xl">
              <div className="w-2 h-2 rounded-full bg-red-500 animate-ping"></div>
              <p className="text-[10px] text-slate-300 uppercase tracking-[0.2em] font-bold">
-               {isTheft ? "Reconnect Immediately" : (isFull ? "Turn off charging" : "Unplug device safely")}
+               {isTheft ? t.reconnectImmediately : (isFull ? t.pleaseTurnOff : t.unplugSafely)}
              </p>
           </div>
         </div>
@@ -1312,7 +1326,7 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop 
       <div className="w-full flex flex-col items-center space-y-6">
         <div className="w-full max-w-[320px] relative h-20 bg-slate-900/50 rounded-full border border-slate-800 p-2 overflow-hidden">
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <p className="text-slate-500 font-bold uppercase text-xs tracking-widest">Swipe to Disarm</p>
+            <p className="text-slate-500 font-bold uppercase text-xs tracking-widest">{t.swipeToDisarm}</p>
           </div>
           
           <motion.div 
@@ -1338,7 +1352,7 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop 
             className="flex items-center gap-2 px-6 py-3 bg-slate-900 border border-slate-800 rounded-full text-slate-400 hover:text-white transition-all active:scale-95"
           >
             <Moon size={16} />
-            <span className="text-[10px] font-bold uppercase tracking-widest">Snooze (5m)</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest">{t.snooze}</span>
           </button>
           
           <button 
@@ -1346,7 +1360,7 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop 
             className="flex items-center gap-2 px-6 py-3 bg-slate-900 border border-slate-800 rounded-full text-accent hover:bg-accent hover:text-black transition-all active:scale-95"
           >
             <Settings size={16} />
-            <span className="text-[10px] font-bold uppercase tracking-widest">Change Goal</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest">{t.changeGoal}</span>
           </button>
         </div>
       </div>
@@ -1354,7 +1368,7 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop 
       <div className="flex flex-col items-center gap-4">
         <div className="flex items-center gap-2 text-slate-600 bg-slate-900 px-4 py-2 rounded-full border border-slate-800">
            <Zap size={14} className="text-accent" />
-           <span className="text-[10px] font-bold uppercase tracking-widest">Auto-Monitoring Active</span>
+           <span className="text-[10px] font-bold uppercase tracking-widest">{t.autoMonitoring}</span>
         </div>
       </div>
     </motion.div>
