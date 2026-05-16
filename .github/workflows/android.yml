@@ -38,15 +38,19 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Capacitor Sync
+      - name: Capacitor Sync & Fix Wrapper
         run: |
           npx cap add android || true
           npx cap sync android
+          # Fix potential gradle wrapper corruption
+          cd android
+          mkdir -p gradle/wrapper
+          curl -L https://raw.githubusercontent.com/gradle/gradle/v8.2.1/gradle/wrapper/gradle-wrapper.jar -o gradle/wrapper/gradle-wrapper.jar
+          chmod +x gradlew
 
       - name: Build Play Store Bundle (AAB) & Testing APK
         run: |
           cd android
-          chmod +x gradlew
           # Build both AAB for Play Store and Debug APK for manual installation/testing
           ./gradlew clean bundleRelease assembleDebug \
             -Pandroid.injected.version.code=${{ github.run_number }} \
