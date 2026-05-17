@@ -45,14 +45,14 @@ jobs:
         working-directory: android
         run: |
           set -e
-          VER=8.3
+          VER=8.2.1
           # If wrapper jar missing or invalid, generate one using a downloaded Gradle distribution
           if ! unzip -l gradle/wrapper/gradle-wrapper.jar >/dev/null 2>&1; then
             echo "Gradle wrapper missing or invalid — generating wrapper (Gradle ${VER})"
             TMPDIR=$(mktemp -d)
             curl -fsSL "https://services.gradle.org/distributions/gradle-${VER}-bin.zip" -o "$TMPDIR/gradle.zip"
             unzip -q "$TMPDIR/gradle.zip" -d "$TMPDIR"
-            "$TMPDIR"/gradle-${VER}/bin/gradle wrapper --gradle-version ${VER} --distribution-type all --no-daemon
+            "$TMPDIR"/gradle-${VER}/bin/gradle wrapper --gradle-version ${VER} --distribution-type all
             chmod +x gradlew
             rm -rf "$TMPDIR"
           else
@@ -66,7 +66,7 @@ jobs:
           ./gradlew clean bundleRelease assembleDebug \
             -Pandroid.injected.version.code=${{ github.run_number }} \
             -Pandroid.injected.version.name="1.0.${{ github.run_number }}" \
-            --stacktrace --no-build-cache
+            --stacktrace
 
       - name: Upload Play Store Bundle (AAB)
         uses: actions/upload-artifact@v4
