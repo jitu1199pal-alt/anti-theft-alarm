@@ -40,32 +40,48 @@ jobs:
 
       - name: Capacitor Sync & Fix Wrapper
         run: |
+          set -euo pipefail
           npx cap sync android
           cd android
-          rm -rf gradle/wrapper/gradle-wrapper.jar
           mkdir -p gradle/wrapper
-          
-          # Download gradle wrapper with retry logic and verification
-          MAX_RETRIES=3
-          RETRY_COUNT=0
-          until curl -L --fail --retry 3 --retry-delay 2 \
-            https://github.com/gradle/gradle/raw/v8.5.0/gradle/wrapper/gradle-wrapper.jar \
-            -o gradle/wrapper/gradle-wrapper.jar; do
-            RETRY_COUNT=$((RETRY_COUNT + 1))
-            if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
-              echo "Failed to download gradle-wrapper.jar after $MAX_RETRIES attempts"
+
+          # If a wrapper already exists, keep it unless it's invalid
+          VALID_WRAPPER=0
+          if [ -s gradle/wrapper/gradle-wrapper.jar ]; then
+            if unzip -l gradle/wrapper/gradle-wrapper.jar >/dev/null 2>&1; then
+              echo "Existing gradle-wrapper.jar looks valid; keeping it."
+              VALID_WRAPPER=1
+            else
+              echo "Existing gradle-wrapper.jar is invalid, will re-download."
+              rm -f gradle/wrapper/gradle-wrapper.jar
+            fi
+          fi
+
+          if [ $VALID_WRAPPER -eq 0 ]; then
+            echo "Downloading gradle-wrapper.jar..."
+            URL="https://raw.githubusercontent.com/gradle/gradle/v8.5.0/gradle/wrapper/gradle-wrapper.jar"
+            MAX_RETRIES=5
+            RETRY_COUNT=0
+            until curl -fsSL --retry 3 --retry-delay 2 -o gradle/wrapper/gradle-wrapper.jar "$URL"; do
+              RETRY_COUNT=$((RETRY_COUNT + 1))
+              echo "Download attempt $RETRY_COUNT/$MAX_RETRIES failed."
+              if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
+                echo "Failed to download gradle-wrapper.jar after $MAX_RETRIES attempts"
+                exit 1
+              fi
+              sleep 5
+            done
+
+            # Validate the downloaded file is a real JAR/Zip (unzip will error on HTML/text)
+            if ! unzip -l gradle/wrapper/gradle-wrapper.jar >/dev/null 2>&1; then
+              echo "ERROR: downloaded gradle-wrapper.jar is not a valid JAR (contains HTML/text)."
+              echo "First 40 bytes of file for debugging:"
+              head -c 240 gradle/wrapper/gradle-wrapper.jar | sed -n '1,20p' || true
+              rm -f gradle/wrapper/gradle-wrapper.jar
               exit 1
             fi
-            echo "Retry $RETRY_COUNT/$MAX_RETRIES..."
-            sleep 5
-          done
-          
-          # Verify the file exists and has content
-          if [ ! -s gradle/wrapper/gradle-wrapper.jar ]; then
-            echo "ERROR: gradle-wrapper.jar is empty or missing"
-            exit 1
           fi
-          
+
           ls -lh gradle/wrapper/gradle-wrapper.jar
           chmod +x gradlew
 
