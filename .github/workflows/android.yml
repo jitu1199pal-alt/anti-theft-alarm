@@ -41,7 +41,7 @@ jobs:
       - name: Capacitor Sync
         run: npx cap sync android
 
-      - name: Ensure Gradle wrapper exists and is valid
+      
         working-directory: android
         run: |
           set -e
