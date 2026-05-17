@@ -59,15 +59,15 @@ jobs:
             echo "Gradle wrapper exists and is valid"
           fi
 
-      - name: Build Play Store Bundle (AAB) & Testing APK
+            - name: Build Play Store Bundle (AAB) & Testing APK
         run: |
           cd android
           # Build both AAB for Play Store and Debug APK for manual installation/testing
           ./gradlew clean bundleRelease assembleDebug \
             -Pandroid.injected.version.code=${{ github.run_number }} \
             -Pandroid.injected.version.name="1.0.${{ github.run_number }}" \
-            --stacktrace 
-            --no-build-cache
+            --stacktrace --no-build-cache
+
 
 
       - name: Upload Play Store Bundle (AAB)
