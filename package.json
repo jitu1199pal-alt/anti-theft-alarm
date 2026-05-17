@@ -1,8 +1,8 @@
 {
-  "//": "v1.0.26-gold-standard",
+  "//": "v1.0.27-gold-standard",
   "name": "chargeguard-pro-anti-theft",
   "private": true,
-  "version": "1.0.26",
+  "version": "1.0.27",
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
