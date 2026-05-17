@@ -41,14 +41,32 @@ jobs:
       - name: Capacitor Sync & Fix Wrapper
         run: |
           npx cap sync android
-          # Fix potential gradle wrapper corruption by ensuring a clean file exists
           cd android
-          echo "Verifying gradle wrapper..."
           rm -rf gradle/wrapper/gradle-wrapper.jar
           mkdir -p gradle/wrapper
-          # Use a verified download link from the v8.5.0 tag
-          curl -L https://github.com/gradle/gradle/raw/v8.5.0/gradle/wrapper/gradle-wrapper.jar -o gradle/wrapper/gradle-wrapper.jar
-          ls -l gradle/wrapper/
+          
+          # Download gradle wrapper with retry logic and verification
+          MAX_RETRIES=3
+          RETRY_COUNT=0
+          until curl -L --fail --retry 3 --retry-delay 2 \
+            https://github.com/gradle/gradle/raw/v8.5.0/gradle/wrapper/gradle-wrapper.jar \
+            -o gradle/wrapper/gradle-wrapper.jar; do
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
+              echo "Failed to download gradle-wrapper.jar after $MAX_RETRIES attempts"
+              exit 1
+            fi
+            echo "Retry $RETRY_COUNT/$MAX_RETRIES..."
+            sleep 5
+          done
+          
+          # Verify the file exists and has content
+          if [ ! -s gradle/wrapper/gradle-wrapper.jar ]; then
+            echo "ERROR: gradle-wrapper.jar is empty or missing"
+            exit 1
+          fi
+          
+          ls -lh gradle/wrapper/gradle-wrapper.jar
           chmod +x gradlew
 
       - name: Build Play Store Bundle (AAB) & Testing APK
