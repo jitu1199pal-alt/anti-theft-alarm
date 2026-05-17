@@ -1,6 +1,6 @@
 {
   "name": "ChargeGuard Pro",
-  "description": "Professional anti-theft and charger security system with high-decibel alarms, battery health monitoring, and secure build pipelines.",
+  "description": "Premium anti-theft system and core charger security with real-time battery monitoring and AI-powered health analytics. Stable v1.0.24 build.",
   "requestFramePermissions": ["camera", "microphone", "geolocation", "screen-wake-lock"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

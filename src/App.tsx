@@ -362,8 +362,8 @@ function SplashScreen({ t }: any) {
       </motion.div>
       <div className="text-center">
         <h1 className="text-4xl font-black tracking-tighter text-white uppercase italic">{t.appName}<span className="text-[#00FF88]">.</span></h1>
-        {/* sync_v1.0.22 */}
-        <p className="text-slate-500 text-[10px] tracking-[0.4em] font-bold mt-2 uppercase">{t.coreSystem} v1.0.22</p>
+        {/* sync_v1.0.24 */}
+        <p className="text-slate-500 text-[10px] tracking-[0.4em] font-bold mt-2 uppercase">{t.coreSystem} v1.0.24</p>
       </div>
     </motion.div>
   );
@@ -563,7 +563,7 @@ function HomeScreen({ battery, config, setConfig, isMonitoring, setMonitoring, s
 
       <footer className="mt-8 flex justify-between items-center text-slate-500 text-[10px] font-bold uppercase tracking-widest">
         <span>{t.mode}: <span className="text-accent">Auto</span></span>
-        <span className="flex items-center gap-2 italic text-slate-600">v1.0.22-{t.stable}</span>
+        <span className="flex items-center gap-2 italic text-slate-600">v1.0.24-{t.stable}</span>
       </footer>
     </motion.div>
   );
