@@ -38,52 +38,26 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Capacitor Sync & Fix Wrapper
+      - name: Capacitor Sync
+        run: npx cap sync android
+
+      - name: Ensure Gradle wrapper exists and is valid
+        working-directory: android
         run: |
-          set -euo pipefail
-          npx cap sync android
-          cd android
-          mkdir -p gradle/wrapper
-
-          # If a wrapper already exists, keep it unless it's invalid
-          VALID_WRAPPER=0
-          if [ -s gradle/wrapper/gradle-wrapper.jar ]; then
-            if unzip -l gradle/wrapper/gradle-wrapper.jar >/dev/null 2>&1; then
-              echo "Existing gradle-wrapper.jar looks valid; keeping it."
-              VALID_WRAPPER=1
-            else
-              echo "Existing gradle-wrapper.jar is invalid, will re-download."
-              rm -f gradle/wrapper/gradle-wrapper.jar
-            fi
+          set -e
+          VER=8.5
+          # If wrapper jar missing or invalid, generate one using a downloaded Gradle distribution
+          if ! unzip -l gradle/wrapper/gradle-wrapper.jar >/dev/null 2>&1; then
+            echo "Gradle wrapper missing or invalid — generating wrapper (Gradle ${VER})"
+            TMPDIR=$(mktemp -d)
+            curl -fsSL "https://services.gradle.org/distributions/gradle-${VER}-bin.zip" -o "$TMPDIR/gradle.zip"
+            unzip -q "$TMPDIR/gradle.zip" -d "$TMPDIR"
+            "$TMPDIR"/gradle-${VER}/bin/gradle wrapper --gradle-version ${VER} --distribution-type all
+            chmod +x gradlew
+            rm -rf "$TMPDIR"
+          else
+            echo "Gradle wrapper exists and is valid"
           fi
-
-          if [ $VALID_WRAPPER -eq 0 ]; then
-            echo "Downloading gradle-wrapper.jar..."
-            URL="https://raw.githubusercontent.com/gradle/gradle/v8.5.0/gradle/wrapper/gradle-wrapper.jar"
-            MAX_RETRIES=5
-            RETRY_COUNT=0
-            until curl -fsSL --retry 3 --retry-delay 2 -o gradle/wrapper/gradle-wrapper.jar "$URL"; do
-              RETRY_COUNT=$((RETRY_COUNT + 1))
-              echo "Download attempt $RETRY_COUNT/$MAX_RETRIES failed."
-              if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
-                echo "Failed to download gradle-wrapper.jar after $MAX_RETRIES attempts"
-                exit 1
-              fi
-              sleep 5
-            done
-
-            # Validate the downloaded file is a real JAR/Zip (unzip will error on HTML/text)
-            if ! unzip -l gradle/wrapper/gradle-wrapper.jar >/dev/null 2>&1; then
-              echo "ERROR: downloaded gradle-wrapper.jar is not a valid JAR (contains HTML/text)."
-              echo "First 40 bytes of file for debugging:"
-              head -c 240 gradle/wrapper/gradle-wrapper.jar | sed -n '1,20p' || true
-              rm -f gradle/wrapper/gradle-wrapper.jar
-              exit 1
-            fi
-          fi
-
-          ls -lh gradle/wrapper/gradle-wrapper.jar
-          chmod +x gradlew
 
       - name: Build Play Store Bundle (AAB) & Testing APK
         run: |
