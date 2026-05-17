@@ -45,7 +45,7 @@ jobs:
         working-directory: android
         run: |
           set -e
-          VER=8.2.1
+          VER=8.1
           # If wrapper jar missing or invalid, generate one using a downloaded Gradle distribution
           if ! unzip -l gradle/wrapper/gradle-wrapper.jar >/dev/null 2>&1; then
             echo "Gradle wrapper missing or invalid — generating wrapper (Gradle ${VER})"
