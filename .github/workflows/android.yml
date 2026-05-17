@@ -52,7 +52,7 @@ jobs:
             TMPDIR=$(mktemp -d)
             curl -fsSL "https://services.gradle.org/distributions/gradle-${VER}-bin.zip" -o "$TMPDIR/gradle.zip"
             unzip -q "$TMPDIR/gradle.zip" -d "$TMPDIR"
-            "$TMPDIR"/gradle-${VER}/bin/gradle wrapper --gradle-version ${VER} --distribution-type all
+            "$TMPDIR"/gradle-${VER}/bin/gradle wrapper --gradle-version ${VER} --distribution-type all --no-daemon
             chmod +x gradlew
             rm -rf "$TMPDIR"
           else
