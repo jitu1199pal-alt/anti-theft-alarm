@@ -362,6 +362,7 @@ function SplashScreen({ t }: any) {
       </motion.div>
       <div className="text-center">
         <h1 className="text-4xl font-black tracking-tighter text-white uppercase italic">{t.appName}<span className="text-[#00FF88]">.</span></h1>
+        {/* sync_v1.0.18 */}
         <p className="text-slate-500 text-[10px] tracking-[0.4em] font-bold mt-2 uppercase">{t.coreSystem} v1.0.18</p>
       </div>
     </motion.div>
