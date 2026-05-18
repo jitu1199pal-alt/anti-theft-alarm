@@ -41,9 +41,10 @@ jobs:
       - name: Capacitor Sync
         run: npx cap sync android
 
-      - name: Build Android (AAB + APK)
+      - name: Fix Gradle and Build
         run: |
           cd android
+          rm -f gradle/wrapper/gradle-wrapper.jar
           gradle wrapper --gradle-version 8.2.1
           chmod +x gradlew
           ./gradlew clean bundleRelease assembleDebug \
@@ -51,7 +52,6 @@ jobs:
             -Pandroid.injected.version.code=${{ github.run_number }} \
             -Pandroid.injected.version.name="1.0.${{ github.run_number }}" \
             --stacktrace
-
 
       - name: Upload Play Store Bundle (AAB)
         uses: actions/upload-artifact@v4
