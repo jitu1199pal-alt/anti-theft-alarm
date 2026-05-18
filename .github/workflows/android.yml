@@ -45,24 +45,7 @@ jobs:
               cd android
               gradle wrapper --gradle-version 8.2.1
               chmod +x gradlew
-      - name: Ensure Gradle wrapper exists and is valid
-        working-directory: android
-        run: |
-          set -e
-          VER=8.2.1
-          # If wrapper jar missing or invalid, generate one using a downloaded Gradle distribution
-          if ! unzip -l gradle/wrapper/gradle-wrapper.jar >/dev/null 2>&1; then
-            echo "Gradle wrapper missing or invalid — generating wrapper (Gradle ${VER})"
-            TMPDIR=$(mktemp -d)
-            curl -fsSL "https://services.gradle.org/distributions/gradle-${VER}-bin.zip" -o "$TMPDIR/gradle.zip"
-            unzip -q "$TMPDIR/gradle.zip" -d "$TMPDIR"
-            "$TMPDIR"/gradle-${VER}/bin/gradle wrapper --gradle-version ${VER} --distribution-type all
-            chmod +x gradlew
-            rm -rf "$TMPDIR"
-          else
-            echo "Gradle wrapper exists and is valid"
-          fi
-
+      
       - name: Build Play Store Bundle (AAB) & Testing APK
         run: |
           cd android
