@@ -60,7 +60,7 @@ export default function App() {
   const [showTempWarning, setShowTempWarning] = useState(false);
   const [targetReachedAlerted, setTargetReachedAlerted] = useState(false);
   const [alarmReason, setAlarmReason] = useState<'theft' | 'full' | 'low' | 'test' | null>(null);
-  const wakeLockRef = useRef<any>(null);) 
+  const wakeLockRef = useRef<any>(null);
 
   // Wake Lock implementation to keep screen on while monitoring
   useEffect(() => {
