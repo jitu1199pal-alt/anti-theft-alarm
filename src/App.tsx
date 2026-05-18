@@ -33,7 +33,8 @@ import { cn, formatTime } from './lib/utils';
 import { BatteryIndicator, QuickPreset } from './components/BatteryIndicator';
 import { translations, Language } from './translations';
 
-export default function App() {
+  export default function App() {
+  const isNative = Capacitor.isNativePlatform();
   const [screen, setScreen] = useState<Screen>(Screen.SPLASH);
   const [theme, setTheme] = useState<Theme>('dark');
   const [lang, setLang] = useState<Language>(() => {
