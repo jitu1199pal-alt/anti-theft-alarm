@@ -44,13 +44,14 @@ jobs:
       - name: Build Android (AAB + APK)
         run: |
           cd android
-          gradle wrapper
+          gradle wrapper --gradle-version 8.2.1
           chmod +x gradlew
           ./gradlew clean bundleRelease assembleDebug \
             --no-daemon \
             -Pandroid.injected.version.code=${{ github.run_number }} \
             -Pandroid.injected.version.name="1.0.${{ github.run_number }}" \
             --stacktrace
+
 
       - name: Upload Play Store Bundle (AAB)
         uses: actions/upload-artifact@v4
