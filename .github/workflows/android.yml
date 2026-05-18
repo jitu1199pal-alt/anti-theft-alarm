@@ -25,7 +25,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '21'
+          java-version: '17'
 
       - name: Deep Clean and Install
         run: |
@@ -40,7 +40,11 @@ jobs:
 
       - name: Capacitor Sync
         run: npx cap sync android
-
+      - name: Regenerate Gradle Wrapper
+        run: |
+              cd android
+              gradle wrapper --gradle-version 8.2.1
+              chmod +x gradlew
       - name: Ensure Gradle wrapper exists and is valid
         working-directory: android
         run: |
