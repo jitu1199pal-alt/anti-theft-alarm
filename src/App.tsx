@@ -24,7 +24,7 @@ import {
   Info,
   Languages
 } from 'lucide-react';
-import { AdMob, BannerAdSize, BannerAdPosition } from '@capacitor-community/admob';
+
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
 import { Screen, Theme, BatteryState, AlarmConfig, SecurityConfig, AlarmSound } from './types';
@@ -60,45 +60,7 @@ export default function App() {
   const [showTempWarning, setShowTempWarning] = useState(false);
   const [targetReachedAlerted, setTargetReachedAlerted] = useState(false);
   const [alarmReason, setAlarmReason] = useState<'theft' | 'full' | 'low' | 'test' | null>(null);
-  const wakeLockRef = useRef<any>(null);
-
-  // Android Native Ads & Persistence
-  const isNative = Capacitor.isNativePlatform();
-
-  useEffect(() => {
-    if (isNative) {
-      const initNative = async () => {
-        try {
-          // Initialize AdMob safely
-          await AdMob.initialize({
-            testingDevices: [],
-            initializeForTesting: true,
-          });
-
-          // Show Banner for Native App
-          const options = {
-            adId: 'ca-app-pub-3940256099942544/6300978111', // Test Ad ID
-            adSize: BannerAdSize.ADAPTIVE_BANNER,
-            position: BannerAdPosition.BOTTOM_CENTER,
-            margin: 0,
-          };
-          
-          await AdMob.showBanner(options).catch(e => console.log('Banner error', e));
-
-          // Handle App close/Background
-          CapApp.addListener('appStateChange', ({ isActive }) => {
-            if (!isActive && isMonitoring) {
-              console.log('App in background, but monitoring is ON');
-            }
-          });
-        } catch (e) {
-          console.error('Critical Native Init Error:', e);
-        }
-      };
-      
-      initNative();
-    }
-  }, [isMonitoring, isNative]);
+  const wakeLockRef = useRef<any>(null);) 
 
   // Wake Lock implementation to keep screen on while monitoring
   useEffect(() => {
