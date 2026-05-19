@@ -25,9 +25,9 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
 
-      - name: Install Dependencies
+      - name: Deep Clean and Install
         run: |
           rm -rf node_modules package-lock.json
           npm install --legacy-peer-deps --include=optional
@@ -41,14 +41,29 @@ jobs:
       - name: Capacitor Sync
         run: npx cap sync android
 
-      - name: Fix Gradle and Build
+      - name: Ensure Gradle wrapper exists and is valid
+        working-directory: android
+        run: |
+          set -e
+          VER=8.2.1
+          # If wrapper jar missing or invalid, generate one using a downloaded Gradle distribution
+          if ! unzip -l gradle/wrapper/gradle-wrapper.jar >/dev/null 2>&1; then
+            echo "Gradle wrapper missing or invalid — generating wrapper (Gradle ${VER})"
+            TMPDIR=$(mktemp -d)
+            curl -fsSL "https://services.gradle.org/distributions/gradle-${VER}-bin.zip" -o "$TMPDIR/gradle.zip"
+            unzip -q "$TMPDIR/gradle.zip" -d "$TMPDIR"
+            "$TMPDIR"/gradle-${VER}/bin/gradle wrapper --gradle-version ${VER} --distribution-type all
+            chmod +x gradlew
+            rm -rf "$TMPDIR"
+          else
+            echo "Gradle wrapper exists and is valid"
+          fi
+
+      - name: Build Play Store Bundle (AAB) & Testing APK
         run: |
           cd android
-          rm -f gradle/wrapper/gradle-wrapper.jar
-          gradle wrapper --gradle-version 8.2.1
-          chmod +x gradlew
+          # Build both AAB for Play Store and Debug APK for manual installation/testing
           ./gradlew clean bundleRelease assembleDebug \
-            --no-daemon \
             -Pandroid.injected.version.code=${{ github.run_number }} \
             -Pandroid.injected.version.name="1.0.${{ github.run_number }}" \
             --stacktrace
@@ -56,11 +71,11 @@ jobs:
       - name: Upload Play Store Bundle (AAB)
         uses: actions/upload-artifact@v4
         with:
-          name: ChargeGuard-Pro-AAB-v1.0.${{ github.run_number }}
-          path: android/app/build/outputs/bundle/release/*.aab
+          name: ChargeGuard-Pro-v1.0.${{ github.run_number }}-PlayStore-AAB
+          path: android/app/build/outputs/bundle/release/app-release.aab
 
-      - name: Upload Testing APK
+      - name: Upload Testing APK (Installable)
         uses: actions/upload-artifact@v4
         with:
-          name: ChargeGuard-Pro-APK-v1.0.${{ github.run_number }}
-          path: android/app/build/outputs/apk/debug/*.apk
+          name: ChargeGuard-Pro-v1.0.${{ github.run_number }}-Testing-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk

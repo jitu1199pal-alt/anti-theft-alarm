@@ -22,19 +22,27 @@ import {
   Music,
   Upload,
   Info,
-  Languages
+  Languages,
+  Users,
+  CreditCard,
+  Gift,
+  Share2
 } from 'lucide-react';
-
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
+import { Share } from '@capacitor/share';
 import { Screen, Theme, BatteryState, AlarmConfig, SecurityConfig, AlarmSound } from './types';
 import { useBattery } from './lib/battery';
 import { cn, formatTime } from './lib/utils';
 import { BatteryIndicator, QuickPreset } from './components/BatteryIndicator';
 import { translations, Language } from './translations';
+import { auth, db } from './firebase';
+import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { subscriptionService, UserProfile, SUBSCRIPTION_PRICE } from './services/subscriptionService';
+import { GoogleAdSense } from './components/GoogleAdSense';
 
-  export default function App() {
-  const isNative = Capacitor.isNativePlatform();
+export default function App() {
   const [screen, setScreen] = useState<Screen>(Screen.SPLASH);
   const [theme, setTheme] = useState<Theme>('dark');
   const [lang, setLang] = useState<Language>(() => {
@@ -46,6 +54,14 @@ import { translations, Language } from './translations';
     }
   });
   const t = translations[lang] || translations.en;
+  const [user, setUser] = useState<any>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Subscription State
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+
   const [mainAudioContext, setMainAudioContext] = useState<AudioContext | null>(null);
   const battery = useBattery();
   const [wasCharging, setWasCharging] = useState(battery.charging);
@@ -62,6 +78,49 @@ import { translations, Language } from './translations';
   const [targetReachedAlerted, setTargetReachedAlerted] = useState(false);
   const [alarmReason, setAlarmReason] = useState<'theft' | 'full' | 'low' | 'test' | null>(null);
   const wakeLockRef = useRef<any>(null);
+
+  // Firebase Subscription & Referral Monitoring
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        setUser(firebaseUser);
+        let profile = await subscriptionService.getProfile(firebaseUser.uid);
+        if (!profile) {
+          profile = await subscriptionService.initializeProfile(firebaseUser.uid, firebaseUser.email);
+        }
+        setUserProfile(profile);
+        setIsSubscribed(subscriptionService.isSubscriptionActive(profile));
+        setLoading(false);
+      } else {
+        // Fallback for immediate access: Silent sign in
+        signInAnonymously(auth).catch(err => {
+          console.error("Auth error, using local fallback:", err);
+          setLoading(false);
+        });
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Update subscription status in real-time
+  useEffect(() => {
+    if (!user) return;
+    const profileRef = doc(db, 'users', user.uid);
+    const unsub = onSnapshot(profileRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const profile = docSnap.data() as UserProfile;
+        setUserProfile(profile);
+        setIsSubscribed(subscriptionService.isSubscriptionActive(profile));
+      }
+    }, (err) => {
+      console.warn("Real-time profile sync error (check Firebase config):", err);
+    });
+    return () => unsub();
+  }, [user]);
+
+  // Android Native Persistence
+  const isNative = Capacitor.getPlatform() !== 'web';
 
   // Wake Lock implementation to keep screen on while monitoring
   useEffect(() => {
@@ -229,37 +288,155 @@ import { translations, Language } from './translations';
   }, [battery.level, battery.charging, isMonitoring, alarmConfig.targetPercentage, alarmConfig.lowBatteryPercentage, securityConfig.theftAlarm, wasCharging, screen]);
 
   const renderScreen = () => {
+    // If trial/subscription expired, force subscription screen but let them see referrals
+    // For now, I'll let them browse but show a banner if not active.
+    
     switch (screen) {
       case Screen.SPLASH: return <SplashScreen t={t} />;
-      case Screen.HOME: return <HomeScreen battery={battery} config={alarmConfig} setConfig={setAlarmConfig} isMonitoring={isMonitoring} setMonitoring={setIsMonitoring} setScreen={setScreen} audioUnlocked={audioUnlocked} setAudioUnlocked={setAudioUnlocked} audioContext={mainAudioContext} isNative={isNative} lang={lang} setLang={setLang} t={t} />;
+      case Screen.HOME: return (
+        <HomeScreen 
+          battery={battery} 
+          config={alarmConfig} 
+          setConfig={setAlarmConfig} 
+          isMonitoring={isMonitoring} 
+          setMonitoring={setIsMonitoring} 
+          setScreen={setScreen} 
+          audioUnlocked={audioUnlocked} 
+          setAudioUnlocked={setAudioUnlocked} 
+          audioContext={mainAudioContext} 
+          isNative={isNative} 
+          lang={lang} 
+          setLang={setLang} 
+          t={t}
+          userProfile={userProfile}
+          isSubscribed={isSubscribed}
+          onShare={async () => {
+             if (user) {
+               await Share.share({
+                 title: t.appName,
+                 text: t.shareAppText || `Protect your phone with ${t.appName}!`,
+                 url: 'https://ais-dev-uwisz5o2rl7yb3zku2e7aa-142106032593.asia-east1.run.app',
+                 dialogTitle: t.shareDialogTitle || 'Share with friends',
+               });
+               await subscriptionService.addReferral(user.uid);
+             }
+          }}
+        />
+      );
       case Screen.ALARM_SETTINGS: return <AlarmSettings config={alarmConfig} setConfig={setAlarmConfig} onBack={() => setScreen(Screen.HOME)} t={t} />;
       case Screen.SECURITY: return <SecurityScreen onBack={() => setScreen(Screen.HOME)} t={t} />;
       case Screen.HISTORY: return <HistoryScreen onBack={() => setScreen(Screen.HOME)} t={t} />;
       case Screen.HEALTH: return <HealthScreen battery={battery} onBack={() => setScreen(Screen.HOME)} t={t} />;
       case Screen.LOCK: return <AlarmOverlay battery={battery} config={alarmConfig} security={securityConfig} audioContext={mainAudioContext} reason={alarmReason} onStop={(disarm) => { 
-        if (disarm) setIsMonitoring(false); 
-        setTargetReachedAlerted(true);
-        setAlarmReason(null);
-        setScreen(Screen.HOME); 
-      }} t={t} />;
-      default: return <HomeScreen battery={battery} config={alarmConfig} setConfig={setAlarmConfig} isMonitoring={isMonitoring} setMonitoring={setIsMonitoring} setScreen={setScreen} onTest={() => { setAlarmReason('test'); setScreen(Screen.LOCK); }} t={t} />;
-    }
-  };
+      if (disarm) setIsMonitoring(false); 
+      setTargetReachedAlerted(true);
+      setAlarmReason(null);
+      setScreen(Screen.HOME); 
+    }} t={t} />;
+    default: return <HomeScreen battery={battery} config={alarmConfig} setConfig={setAlarmConfig} isMonitoring={isMonitoring} setMonitoring={setIsMonitoring} setScreen={setScreen} onTest={() => { setAlarmReason('test'); setScreen(Screen.LOCK); }} t={t} />;
+  }
+};
+
+  if (loading) {
+    return (
+      <div className="h-screen w-full bg-black flex items-center justify-center">
+        <motion.div 
+          animate={{ scale: [1, 1.2, 1] }}
+          transition={{ repeat: Infinity, duration: 2 }}
+          className="w-16 h-16 bg-accent rounded-2xl flex items-center justify-center"
+        >
+          <Shield size={32} className="text-black" />
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
-    <div className={cn(
-      "relative h-screen w-full max-w-[480px] mx-auto overflow-hidden transition-colors duration-1000",
-      theme === 'dark' ? "bg-black text-white" : "bg-slate-50 text-slate-900",
-      theme === 'neon' && "bg-[#0b0c10] text-[#66fcf1]"
-    )}>
+    <ErrorBoundary t={t}>
+      <div className={cn(
+        "relative h-screen w-full max-w-[480px] mx-auto overflow-hidden transition-colors duration-1000",
+        theme === 'dark' ? "bg-black text-white" : "bg-slate-50 text-slate-900",
+        theme === 'neon' && "bg-[#0b0c10] text-[#66fcf1]"
+      )}>
       {/* Dynamic Background Gradient */}
       <div className={cn(
         "absolute inset-0 opacity-20 pointer-events-none transition-all duration-1000",
         battery.charging ? "bg-[radial-gradient(circle_at_50%_0%,#22c55e_0%,transparent_70%)]" : "bg-[radial-gradient(circle_at_50%_0%,#3b82f6_0%,transparent_70%)]"
       )} />
-      <AnimatePresence mode="wait">
-        {renderScreen()}
-      </AnimatePresence>
+    <AnimatePresence mode="wait">
+      {renderScreen()}
+    </AnimatePresence>
+
+    {/* Subscription Payment Modal */}
+    <AnimatePresence>
+      {showSubscriptionModal && (
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/80 backdrop-blur-sm p-4"
+        >
+          <motion.div 
+            initial={{ y: 100 }}
+            animate={{ y: 0 }}
+            exit={{ y: 100 }}
+            className="w-full max-w-[440px] bg-slate-900 border border-slate-800 rounded-[2.5rem] p-8 shadow-2xl"
+          >
+            <div className="flex justify-between items-start mb-6">
+              <div className="w-16 h-16 bg-accent rounded-[2rem] flex items-center justify-center shadow-[0_0_30px_#00FF8840]">
+                <CreditCard size={32} className="text-black" />
+              </div>
+              <button 
+                onClick={() => setShowSubscriptionModal(false)}
+                className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center text-slate-400"
+              >
+                ×
+              </button>
+            </div>
+            
+            <h2 className="text-3xl font-black italic tracking-tighter text-white mb-2 uppercase">
+              {t.upgrade || 'Upgrade to Pro'}
+            </h2>
+            <p className="text-slate-400 text-sm mb-8">
+              {t.earnLifetime || 'Support us and get full protection without limits.'}
+            </p>
+
+            <div className="space-y-4 mb-8">
+              <div className="p-4 bg-accent/10 border border-accent/30 rounded-2xl flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase text-accent tracking-widest">{t.monthlyPlan || 'Monthly Plan'}</p>
+                  <p className="text-xl font-bold text-white">₹{SUBSCRIPTION_PRICE}</p>
+                </div>
+                <button 
+                  onClick={async () => {
+                    if (user) {
+                      await subscriptionService.processSubscription(user.uid);
+                      setShowSubscriptionModal(false);
+                      alert("Subscription Successful! Thank you.");
+                    }
+                  }}
+                  className="bg-accent text-black px-6 py-2 rounded-full font-black text-xs uppercase tracking-widest"
+                >
+                  {t.subscribeNow || 'Pay Now'}
+                </button>
+              </div>
+
+              <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-2xl flex items-center gap-4">
+                <div className="p-2 bg-blue-500 rounded-xl text-white"><Gift size={20} /></div>
+                <div>
+                  <p className="text-[10px] font-black uppercase text-blue-400 tracking-widest">{t.inviteOffer || 'Invite Offer'}</p>
+                  <p className="text-xs font-bold text-white">{t.earnLifetime || '11 Share = Lifetime Free Access'}</p>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-center text-[10px] text-slate-500 uppercase font-bold tracking-widest opacity-60">
+              Secure payment via Google Pay simulation
+            </p>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
 
       <AnimatePresence>
         {showTempWarning && (
@@ -288,11 +465,48 @@ import { translations, Language } from './translations';
           <NavButton active={screen === Screen.SECURITY} icon={Shield} onClick={() => setScreen(Screen.SECURITY)} />
         </div>
       )}
-    </div>
+      </div>
+    </ErrorBoundary>
   );
 }
 
-// Sub-Components & Screens
+// Error Boundary Component
+class ErrorBoundary extends React.Component<{ children: React.ReactNode, t: any }, { hasError: boolean }> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error("Uncaught error suppressed:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="h-screen w-full bg-black flex flex-col items-center justify-center p-8 text-center">
+          <div className="w-20 h-20 bg-red-500/20 text-red-500 rounded-full flex items-center justify-center mb-6">
+            <Shield size={40} />
+          </div>
+          <h2 className="text-xl font-black italic tracking-tighter text-white uppercase mb-2">Defense System Error</h2>
+          <p className="text-slate-500 text-xs mb-8">An unexpected error occurred. The system is attempting to recover automatically.</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="bg-accent text-black px-8 py-3 rounded-full font-black text-xs uppercase tracking-widest"
+          >
+            Restart Application
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 function NavButton({ icon: Icon, active, onClick }: { icon: any, active: boolean, onClick: () => void }) {
   return (
@@ -332,7 +546,9 @@ function SplashScreen({ t }: any) {
   );
 }
 
-function HomeScreen({ battery, config, setConfig, isMonitoring, setMonitoring, setScreen, audioUnlocked, setAudioUnlocked, audioContext, onTest, isNative, lang, setLang, t }: any) {
+function HomeScreen({ battery, config, setConfig, isMonitoring, setMonitoring, setScreen, audioUnlocked, setAudioUnlocked, audioContext, onTest, isNative, lang, setLang, t, userProfile, isSubscribed, onShare }: any) {
+  const [showSubscription, setShowSubscription] = useState(false);
+
   return (
     <motion.div 
       initial={{ opacity: 0 }} 
@@ -360,16 +576,57 @@ function HomeScreen({ battery, config, setConfig, isMonitoring, setMonitoring, s
         </div>
       </header>
 
-      <div className="flex-1 grid grid-cols-12 gap-4">
-        {/* AdSense for Web (Hidden in Native App) */}
-        {!isNative && (
-          <div className="col-span-12 h-24 bg-slate-900/40 border border-dashed border-slate-800 rounded-xl flex flex-col items-center justify-center p-2 text-center">
-            <span className="text-[10px] text-slate-600 font-bold uppercase tracking-widest mb-1 italic">Google Play Bundle Active</span>
-            <p className="text-[9px] text-slate-500 max-w-[200px]">Secure your device from theft. Set target and arm defense system.</p>
+      {/* Subscription & Referral Bar */}
+      <div className="mb-6 space-y-4">
+        {!isSubscribed && (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-4 flex flex-col gap-3">
+             <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-red-500">
+                  <CreditCard size={16} />
+                  <span className="text-[10px] font-black uppercase tracking-widest">{t.inactiveSubscription || 'Subscription Inactive'}</span>
+                </div>
+                <button 
+                  onClick={() => setShowSubscription(true)}
+                  className="bg-red-500 text-white text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full"
+                >
+                  {t.upgrade || 'Upgrade'}
+                </button>
+             </div>
+             <p className="text-[10px] text-slate-400 font-medium">₹21/Month or share with 11 people for Lifetime Access!</p>
           </div>
         )}
 
-        {/* Main Status Block */}
+        <div className="bg-blue-500/10 border border-blue-500/30 rounded-2xl p-4">
+           <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2 text-blue-500">
+                <Users size={16} />
+                <span className="text-[10px] font-black uppercase tracking-widest">{t.referrals || 'Your Referrals'}</span>
+              </div>
+              <span className="text-lg font-black text-blue-500">{userProfile?.referralCount || 0}/11</span>
+           </div>
+           <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mb-3">
+              <div 
+                className="h-full bg-blue-500 transition-all duration-1000" 
+                style={{ width: `${Math.min(100, ((userProfile?.referralCount || 0) / 11) * 100)}%` }} 
+              />
+           </div>
+           <button 
+             onClick={onShare}
+             className="w-full bg-blue-500 text-white text-[10px] font-black uppercase tracking-widest py-2 rounded-xl flex items-center justify-center gap-2"
+           >
+             <Share2 size={14} />
+             {t.shareAndEarn || 'Share to earn Month/Lifetime Free'}
+           </button>
+        </div>
+      </div>
+
+      <div className="flex-1 grid grid-cols-12 gap-4">
+        {/* AdSense (Runs for Everyone) */}
+        <div className="col-span-12">
+          <GoogleAdSense slot="1234567890" />
+        </div>
+
+        {/* Status indicator and Master Toggle */}
         <div className="col-span-12 glass-card relative overflow-hidden flex flex-col items-center justify-center p-6">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,#00FF8810,transparent_70%)] opacity-50"></div>
           <BatteryIndicator level={battery.level} charging={battery.charging} className="scale-110" />

@@ -1,0 +1,57 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Stores user subscription, referrals, and trial data.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Unique identifier for the user."
+        },
+        "email": {
+          "type": "string",
+          "description": "User's email address."
+        },
+        "subscriptionType": {
+          "type": "string",
+          "enum": ["trial", "active", "free_referral", "lifetime"],
+          "description": "Current subscription status."
+        },
+        "trialStartedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the 7-day trial started."
+        },
+        "referralCount": {
+          "type": "integer",
+          "description": "Number of people the user has shared the app with."
+        },
+        "isLifetimeAccess": {
+          "type": "boolean",
+          "description": "Whether the user has lifetime access (11+ referrals)."
+        },
+        "subscriptionExpiresAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Expiry for paid subscription or referral bonus."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["userId", "subscriptionType", "referralCount", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "UserProfile",
+      "description": "The private profile for each user."
+    }
+  }
+}
