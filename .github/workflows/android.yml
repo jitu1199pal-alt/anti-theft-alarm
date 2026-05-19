@@ -41,25 +41,16 @@ jobs:
       - name: Capacitor Sync
         run: npx cap sync android
 
-      - name: Ensure Gradle wrapper exists and is valid
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.7
+
+      - name: Update Gradle Wrapper
         working-directory: android
         run: |
-          set -e
-          VER=8.7
-          # If wrapper jar missing or invalid, generate one using a downloaded Gradle distribution
-          if ! unzip -l gradle/wrapper/gradle-wrapper.jar >/dev/null 2>&1; then
-            echo "Gradle wrapper missing or invalid — generating wrapper (Gradle ${VER})"
-            TMPDIR=$(mktemp -d)
-            curl -fsSL "https://services.gradle.org/distributions/gradle-${VER}-bin.zip" -o "$TMPDIR/gradle.zip"
-            unzip -q "$TMPDIR/gradle.zip" -d "$TMPDIR"
-            "$TMPDIR"/gradle-${VER}/bin/gradle wrapper --gradle-version ${VER} --distribution-type all
-            chmod +x gradlew
-            rm -rf "$TMPDIR"
-          else
-            echo "Gradle wrapper exists and is valid"
-            # Ensure it uses the correct version even if jar exists
-            ./gradlew wrapper --gradle-version ${VER} --distribution-type all
-          fi
+          gradle wrapper --gradle-version 8.7 --distribution-type all
+          chmod +x gradlew
 
       - name: Build Play Store Bundle (AAB) & Testing APK
         run: |
