@@ -45,6 +45,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.7
+          add-to-allowlist: 24f0a7db79bf395e280bf4235ffc355248d713722663b6d0f35282eb933ec865
 
       - name: Update Gradle Wrapper
         working-directory: android

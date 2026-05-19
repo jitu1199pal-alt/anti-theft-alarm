@@ -465,7 +465,7 @@ function HomeScreen({ battery, config, setConfig, isMonitoring, setMonitoring, s
       initial={{ opacity: 0 }} 
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="p-8 h-full pb-32 flex flex-col"
+      className="p-8 pb-32 flex flex-col"
     >
       <header className="flex justify-between items-center mb-8">
         <div className="flex items-center gap-3">
@@ -785,7 +785,7 @@ function AlarmSettings({ config, setConfig, onBack, t }: any) {
     };
 
   return (
-    <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="p-6 h-full pb-32 space-y-6">
+    <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="p-6 pb-32 space-y-6">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="p-2 bg-slate-900 border border-slate-800 rounded-xl"><ChevronRight size={20} className="rotate-180" /></button>
@@ -955,7 +955,7 @@ function AlarmSettings({ config, setConfig, onBack, t }: any) {
 
 function SecurityScreen({ onBack, t }: any) {
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-8 space-y-8 h-full pb-32">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-8 space-y-8 pb-32">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="p-2 bg-slate-900 border border-slate-800 rounded-xl"><ChevronRight size={20} className="rotate-180" /></button>
@@ -1000,7 +1000,7 @@ function SecurityScreen({ onBack, t }: any) {
 
 function HistoryScreen({ t }: any) {
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-8 space-y-8 h-full pb-32">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-8 space-y-8 pb-32">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold tracking-tight">{t.chargingHistory}</h2>
         <div className="p-2 bg-accent/10 text-accent rounded-lg"><History size={20} /></div>
@@ -1080,7 +1080,7 @@ function HealthScreen({ battery, onBack, t }: any) {
   ];
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-8 space-y-8 h-full pb-32 font-sans">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-8 space-y-8 pb-32 font-sans">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold tracking-tight">{t.statusHealth}</h2>
         <div className="p-2 bg-blue-500/10 text-blue-500 rounded-lg"><Activity size={20} /></div>
