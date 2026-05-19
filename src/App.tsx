@@ -39,7 +39,6 @@ import { translations, Language } from './translations';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { subscriptionService, UserProfile, SUBSCRIPTION_PRICE } from './services/subscriptionService';
 import { GoogleAdSense } from './components/GoogleAdSense';
 
 export default function App() {
@@ -55,12 +54,7 @@ export default function App() {
   });
   const t = translations[lang] || translations.en;
   const [user, setUser] = useState<any>(null);
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-
-  // Subscription State
-  const [isSubscribed, setIsSubscribed] = useState(false);
-  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
 
   const [mainAudioContext, setMainAudioContext] = useState<AudioContext | null>(null);
   const battery = useBattery();
@@ -79,45 +73,38 @@ export default function App() {
   const [alarmReason, setAlarmReason] = useState<'theft' | 'full' | 'low' | 'test' | null>(null);
   const wakeLockRef = useRef<any>(null);
 
-  // Firebase Subscription & Referral Monitoring
+  // Basic Auth setup
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         setUser(firebaseUser);
-        let profile = await subscriptionService.getProfile(firebaseUser.uid);
-        if (!profile) {
-          profile = await subscriptionService.initializeProfile(firebaseUser.uid, firebaseUser.email);
-        }
-        setUserProfile(profile);
-        setIsSubscribed(subscriptionService.isSubscriptionActive(profile));
         setLoading(false);
       } else {
-        // Fallback for immediate access: Silent sign in
-        signInAnonymously(auth).catch(err => {
-          console.error("Auth error, using local fallback:", err);
-          setLoading(false);
+        signInAnonymously(auth).catch(() => setLoading(false));
+      }
+    });
+
+    // Android Back Button Handling
+    const setupBackButton = async () => {
+      if (Capacitor.isNativePlatform()) {
+        CapApp.addListener('backButton', ({ canGoBack }) => {
+          if (screen === Screen.HOME || screen === Screen.SPLASH || screen === Screen.LOCK) {
+            CapApp.exitApp();
+          } else {
+            setScreen(Screen.HOME);
+          }
         });
       }
-    });
+    };
+    setupBackButton();
 
-    return () => unsubscribe();
-  }, []);
-
-  // Update subscription status in real-time
-  useEffect(() => {
-    if (!user) return;
-    const profileRef = doc(db, 'users', user.uid);
-    const unsub = onSnapshot(profileRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const profile = docSnap.data() as UserProfile;
-        setUserProfile(profile);
-        setIsSubscribed(subscriptionService.isSubscriptionActive(profile));
+    return () => {
+      unsubscribe();
+      if (Capacitor.isNativePlatform()) {
+        CapApp.removeAllListeners();
       }
-    }, (err) => {
-      console.warn("Real-time profile sync error (check Firebase config):", err);
-    });
-    return () => unsub();
-  }, [user]);
+    };
+  }, [screen]);
 
   // Android Native Persistence
   const isNative = Capacitor.getPlatform() !== 'web';
@@ -308,8 +295,6 @@ export default function App() {
           lang={lang} 
           setLang={setLang} 
           t={t}
-          userProfile={userProfile}
-          isSubscribed={isSubscribed}
           onShare={async () => {
              if (user) {
                await Share.share({
@@ -318,7 +303,6 @@ export default function App() {
                  url: 'https://ais-dev-uwisz5o2rl7yb3zku2e7aa-142106032593.asia-east1.run.app',
                  dialogTitle: t.shareDialogTitle || 'Share with friends',
                });
-               await subscriptionService.addReferral(user.uid);
              }
           }}
         />
@@ -365,77 +349,6 @@ export default function App() {
       )} />
     <AnimatePresence mode="wait">
       {renderScreen()}
-    </AnimatePresence>
-
-    {/* Subscription Payment Modal */}
-    <AnimatePresence>
-      {showSubscriptionModal && (
-        <motion.div 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/80 backdrop-blur-sm p-4"
-        >
-          <motion.div 
-            initial={{ y: 100 }}
-            animate={{ y: 0 }}
-            exit={{ y: 100 }}
-            className="w-full max-w-[440px] bg-slate-900 border border-slate-800 rounded-[2.5rem] p-8 shadow-2xl"
-          >
-            <div className="flex justify-between items-start mb-6">
-              <div className="w-16 h-16 bg-accent rounded-[2rem] flex items-center justify-center shadow-[0_0_30px_#00FF8840]">
-                <CreditCard size={32} className="text-black" />
-              </div>
-              <button 
-                onClick={() => setShowSubscriptionModal(false)}
-                className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center text-slate-400"
-              >
-                ×
-              </button>
-            </div>
-            
-            <h2 className="text-3xl font-black italic tracking-tighter text-white mb-2 uppercase">
-              {t.upgrade || 'Upgrade to Pro'}
-            </h2>
-            <p className="text-slate-400 text-sm mb-8">
-              {t.earnLifetime || 'Support us and get full protection without limits.'}
-            </p>
-
-            <div className="space-y-4 mb-8">
-              <div className="p-4 bg-accent/10 border border-accent/30 rounded-2xl flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] font-black uppercase text-accent tracking-widest">{t.monthlyPlan || 'Monthly Plan'}</p>
-                  <p className="text-xl font-bold text-white">₹{SUBSCRIPTION_PRICE}</p>
-                </div>
-                <button 
-                  onClick={async () => {
-                    if (user) {
-                      await subscriptionService.processSubscription(user.uid);
-                      setShowSubscriptionModal(false);
-                      alert("Subscription Successful! Thank you.");
-                    }
-                  }}
-                  className="bg-accent text-black px-6 py-2 rounded-full font-black text-xs uppercase tracking-widest"
-                >
-                  {t.subscribeNow || 'Pay Now'}
-                </button>
-              </div>
-
-              <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-2xl flex items-center gap-4">
-                <div className="p-2 bg-blue-500 rounded-xl text-white"><Gift size={20} /></div>
-                <div>
-                  <p className="text-[10px] font-black uppercase text-blue-400 tracking-widest">{t.inviteOffer || 'Invite Offer'}</p>
-                  <p className="text-xs font-bold text-white">{t.earnLifetime || '11 Share = Lifetime Free Access'}</p>
-                </div>
-              </div>
-            </div>
-
-            <p className="text-center text-[10px] text-slate-500 uppercase font-bold tracking-widest opacity-60">
-              Secure payment via Google Pay simulation
-            </p>
-          </motion.div>
-        </motion.div>
-      )}
     </AnimatePresence>
 
       <AnimatePresence>
@@ -540,15 +453,13 @@ function SplashScreen({ t }: any) {
       <div className="text-center">
         <h1 className="text-4xl font-black tracking-tighter text-white uppercase italic">{t.appName}<span className="text-[#00FF88]">.</span></h1>
         {/* sync_v1.0.26 */}
-        <p className="text-slate-500 text-[10px] tracking-[0.4em] font-bold mt-2 uppercase">{t.coreSystem} v1.0.26</p>
+        <p className="text-slate-500 text-[10px] tracking-[0.4em] font-bold mt-2 uppercase">{t.coreSystem} v1.0.28</p>
       </div>
     </motion.div>
   );
 }
 
-function HomeScreen({ battery, config, setConfig, isMonitoring, setMonitoring, setScreen, audioUnlocked, setAudioUnlocked, audioContext, onTest, isNative, lang, setLang, t, userProfile, isSubscribed, onShare }: any) {
-  const [showSubscription, setShowSubscription] = useState(false);
-
+function HomeScreen({ battery, config, setConfig, isMonitoring, setMonitoring, setScreen, audioUnlocked, setAudioUnlocked, audioContext, onTest, isNative, lang, setLang, t, onShare }: any) {
   return (
     <motion.div 
       initial={{ opacity: 0 }} 
@@ -575,50 +486,6 @@ function HomeScreen({ battery, config, setConfig, isMonitoring, setMonitoring, s
           </button>
         </div>
       </header>
-
-      {/* Subscription & Referral Bar */}
-      <div className="mb-6 space-y-4">
-        {!isSubscribed && (
-          <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-4 flex flex-col gap-3">
-             <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-red-500">
-                  <CreditCard size={16} />
-                  <span className="text-[10px] font-black uppercase tracking-widest">{t.inactiveSubscription || 'Subscription Inactive'}</span>
-                </div>
-                <button 
-                  onClick={() => setShowSubscription(true)}
-                  className="bg-red-500 text-white text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full"
-                >
-                  {t.upgrade || 'Upgrade'}
-                </button>
-             </div>
-             <p className="text-[10px] text-slate-400 font-medium">₹21/Month or share with 11 people for Lifetime Access!</p>
-          </div>
-        )}
-
-        <div className="bg-blue-500/10 border border-blue-500/30 rounded-2xl p-4">
-           <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2 text-blue-500">
-                <Users size={16} />
-                <span className="text-[10px] font-black uppercase tracking-widest">{t.referrals || 'Your Referrals'}</span>
-              </div>
-              <span className="text-lg font-black text-blue-500">{userProfile?.referralCount || 0}/11</span>
-           </div>
-           <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mb-3">
-              <div 
-                className="h-full bg-blue-500 transition-all duration-1000" 
-                style={{ width: `${Math.min(100, ((userProfile?.referralCount || 0) / 11) * 100)}%` }} 
-              />
-           </div>
-           <button 
-             onClick={onShare}
-             className="w-full bg-blue-500 text-white text-[10px] font-black uppercase tracking-widest py-2 rounded-xl flex items-center justify-center gap-2"
-           >
-             <Share2 size={14} />
-             {t.shareAndEarn || 'Share to earn Month/Lifetime Free'}
-           </button>
-        </div>
-      </div>
 
       <div className="flex-1 grid grid-cols-12 gap-4">
         {/* AdSense (Runs for Everyone) */}
@@ -716,19 +583,26 @@ function HomeScreen({ battery, config, setConfig, isMonitoring, setMonitoring, s
            </button>
         </div>
 
-        {/* Status indicator and Master Toggle */}
+      {/* Status indicator and Master Toggle */}
         <div className="col-span-12 flex flex-col gap-4 mt-2">
-          <div className="bg-slate-900/50 border border-slate-800/50 rounded-2xl p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className={cn("w-2 h-2 rounded-full", isMonitoring ? "bg-[#00FF88] animate-pulse shadow-[0_0_8px_#00FF88]" : "bg-slate-700")}></div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                {isMonitoring ? t.backgroundActive : t.waitingActivation}
+          <div className="bg-slate-900/50 border border-slate-800/50 rounded-2xl p-4 flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className={cn("w-2 h-2 rounded-full", isMonitoring ? "bg-[#00FF88] animate-pulse shadow-[0_0_8px_#00FF88]" : "bg-slate-700")}></div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                  {isMonitoring ? t.backgroundActive : t.waitingActivation}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 text-[9px] font-bold text-[#00FF88]">
+                <Shield size={12} />
+                <span>{t.stayAwake}</span>
+              </div>
+            </div>
+            {isNative && isMonitoring && (
+              <p className="text-[8px] text-slate-500 font-medium italic">
+                Tip: Keep app open or exclude from Battery Optimization for best results on Android.
               </p>
-            </div>
-            <div className="flex items-center gap-2 text-[9px] font-bold text-[#00FF88]">
-              <Shield size={12} />
-              <span>{t.stayAwake}</span>
-            </div>
+            )}
           </div>
 
           <div className="bg-[#00FF88] rounded-[2rem] p-1 flex shadow-[0_20px_50px_rgba(0,255,136,0.2)]">
@@ -783,7 +657,7 @@ function HomeScreen({ battery, config, setConfig, isMonitoring, setMonitoring, s
 
       <footer className="mt-8 flex justify-between items-center text-slate-500 text-[10px] font-bold uppercase tracking-widest">
         <span>{t.mode}: <span className="text-accent">Auto</span></span>
-        <span className="flex items-center gap-2 italic text-slate-600">v1.0.26-{t.stable}</span>
+        <span className="flex items-center gap-2 italic text-slate-600">v1.0.28-{t.stable}</span>
       </footer>
     </motion.div>
   );
