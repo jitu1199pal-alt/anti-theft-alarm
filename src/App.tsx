@@ -663,13 +663,12 @@ export default function App() {
                 {/* Instruction Checklist */}
                 <div className="bg-black/40 rounded-xl p-3.5 flex flex-col gap-2 border border-white/5">
                   <p className="text-[9px] font-black uppercase text-slate-500 tracking-wider">
-                    How to Setup (Step-by-Step):
+                    How to Setup for Background & Lock-Screen (Very Important):
                   </p>
                   <ul className="text-[10px] text-slate-300 space-y-1.5 ml-1 leading-relaxed">
-                    <li>📱 <strong>1. Long press the ChargeGuard Pro icon on your home screen</strong></li>
-                    <li>ℹ️ <strong>2. Tap 'App Info' (ℹ️)</strong></li>
-                    <li>🔋 <strong>3. Tap 'Battery' or 'App battery usage'</strong></li>
-                    <li>⚡ <strong>4. Set recommendation from 'Optimized' to 'Unrestricted'!</strong></li>
+                    <li>📱 <strong>1. App Battery:</strong> Long press the ChargeGuard Pro icon → tap 'App Info' (ℹ️) → tap 'Battery' → Set to <strong>'Unrestricted'</strong>!</li>
+                    <li>🔄 <strong>2. Enable Auto-start / Background:</strong> In App Info or Settings, enable <strong>'Auto-start'</strong> (Xiaomi/Oppo/Vivo/Realme) or <strong>'Allow background activity'</strong>.</li>
+                    <li>🔒 <strong>3. Lock Screen permission:</strong> In App Info → tap 'Other permissions' → enable <strong>'Show on Lock-screen'</strong> and <strong>'Display over other apps'</strong>.</li>
                   </ul>
                 </div>
               </div>

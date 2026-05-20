@@ -54,6 +54,9 @@ public class AlarmServicePlugin extends Plugin {
     @PluginMethod
     public void stopService(PluginCall call) {
         Context context = getContext();
+        android.content.SharedPreferences prefs = context.getSharedPreferences("ChargeGuardPrefs", Context.MODE_PRIVATE);
+        prefs.edit().putBoolean("isMonitoringActive", false).apply();
+        
         Intent serviceIntent = new Intent(context, AlarmService.class);
         try {
             context.stopService(serviceIntent);

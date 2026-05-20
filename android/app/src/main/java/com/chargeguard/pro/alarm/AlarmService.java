@@ -1,5 +1,6 @@
 package com.chargeguard.pro.alarm;
 
+import android.app.AlarmManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -9,6 +10,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.media.AudioAttributes;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
@@ -17,6 +19,7 @@ import android.net.Uri;
 import android.os.BatteryManager;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.PowerManager;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import androidx.core.app.NotificationCompat;
@@ -38,6 +41,7 @@ public class AlarmService extends Service {
 
     private MediaPlayer mediaPlayer = null;
     private Vibrator vibrator = null;
+    private PowerManager.WakeLock wakeLock = null;
 
     private final BroadcastReceiver batteryReceiver = new BroadcastReceiver() {
         @Override
@@ -51,6 +55,14 @@ public class AlarmService extends Service {
         super.onCreate();
         createNotificationChannel();
         vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+        try {
+            PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            if (powerManager != null) {
+                wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ChargeGuard::AlarmServiceWakeLock");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
@@ -58,6 +70,8 @@ public class AlarmService extends Service {
         if (intent != null) {
             String action = intent.getAction();
             if ("STOP_SERVICE".equals(action)) {
+                SharedPreferences prefs = getSharedPreferences("ChargeGuardPrefs", Context.MODE_PRIVATE);
+                prefs.edit().putBoolean("isMonitoringActive", false).apply();
                 stopSelf();
                 return START_NOT_STICKY;
             }
@@ -72,7 +86,29 @@ public class AlarmService extends Service {
         alarmReason = null;
         hadChargerUnplugged = false;
 
-        // Register batter status receiver
+        // Save active monitoring state in SharedPreferences for reboot recovery
+        try {
+            SharedPreferences prefs = getSharedPreferences("ChargeGuardPrefs", Context.MODE_PRIVATE);
+            prefs.edit()
+                 .putBoolean("isMonitoringActive", true)
+                 .putBoolean("theftAlarm", theftAlarmEnabled)
+                 .putInt("targetPercentage", targetPercentage)
+                 .putInt("lowBatteryPercentage", lowBatteryPercentage)
+                 .apply();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        // Acquire wake lock to keep standard CPU active while lock screen is on
+        if (wakeLock != null && !wakeLock.isHeld()) {
+            try {
+                wakeLock.acquire();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        // Register battery status receiver
         registerReceiver(batteryReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
 
         // Start Foreground Service with notification
@@ -277,7 +313,46 @@ public class AlarmService extends Service {
             unregisterReceiver(batteryReceiver);
         } catch (Exception e) {}
         stopAlarmSound();
+        if (wakeLock != null && wakeLock.isHeld()) {
+            try {
+                wakeLock.release();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
         super.onDestroy();
+    }
+
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        super.onTaskRemoved(rootIntent);
+        
+        // This keeps the service active. When the user swipes away our app from recent tasks,
+        // we reschedule the service with AlarmManager to restart after 1 second!
+        try {
+            Intent restartServiceIntent = new Intent(getApplicationContext(), this.getClass());
+            restartServiceIntent.setPackage(getPackageName());
+            restartServiceIntent.putExtra("theftAlarm", theftAlarmEnabled);
+            restartServiceIntent.putExtra("targetPercentage", targetPercentage);
+            restartServiceIntent.putExtra("lowBatteryPercentage", lowBatteryPercentage);
+
+            PendingIntent restartServicePendingIntent = PendingIntent.getService(
+                getApplicationContext(), 
+                1001, 
+                restartServiceIntent, 
+                PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_IMMUTABLE
+            );
+            AlarmManager alarmManager = (AlarmManager) getApplicationContext().getSystemService(Context.ALARM_SERVICE);
+            if (alarmManager != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + 1000, restartServicePendingIntent);
+                } else {
+                    alarmManager.set(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + 1000, restartServicePendingIntent);
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
