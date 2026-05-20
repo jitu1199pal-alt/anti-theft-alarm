@@ -6,7 +6,13 @@
     android:viewportHeight="108"
     android:viewportWidth="108">
 
-    <!-- Ringing Waves (Soundwaves) of Left Bell -->
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0.8"
+        android:scaleY="0.8">
+
+        <!-- Ringing Waves (Soundwaves) of Left Bell -->
     <path
         android:pathData="M18,22 C13,29 13,39 18,46"
         android:strokeColor="#F59E0B"
@@ -168,5 +174,7 @@
         android:strokeWidth="1.6"
         android:strokeLineCap="round"
         android:fillColor="#00000000" />
+
+    </group>
 
 </vector>

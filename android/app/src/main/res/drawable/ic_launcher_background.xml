@@ -25,17 +25,23 @@
     </path>
 
     <!-- Decorative background outer circle representing the golden ring -->
-    <path
-        android:pathData="M54,18 C73.88,18 90,34.12 90,54 C90,73.88 73.88,90 54,90 C34.12,90 18,73.88 18,54 C18,34.12 34.12,18 54,18 Z"
-        android:strokeColor="#FBBF24"
-        android:strokeWidth="2.5"
-        android:fillColor="#00000000" />
-        
-    <!-- Subtle secondary inner accent ring -->
-    <path
-        android:pathData="M54,22 C71.67,22 86,36.33 86,54 C86,71.67 71.67,86 54,86 C36.33,86 22,71.67 22,54 C22,36.33 36.33,22 54,22 Z"
-        android:strokeColor="#3B82F6"
-        android:strokeWidth="1"
-        android:strokeAlpha="0.4"
-        android:fillColor="#00000000" />
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0.8"
+        android:scaleY="0.8">
+        <path
+            android:pathData="M54,18 C73.88,18 90,34.12 90,54 C90,73.88 73.88,90 54,90 C34.12,90 18,73.88 18,54 C18,34.12 34.12,18 54,18 Z"
+            android:strokeColor="#FBBF24"
+            android:strokeWidth="2.5"
+            android:fillColor="#00000000" />
+            
+        <!-- Subtle secondary inner accent ring -->
+        <path
+            android:pathData="M54,22 C71.67,22 86,36.33 86,54 C86,71.67 71.67,86 54,86 C36.33,86 22,71.67 22,54 C22,36.33 36.33,22 54,22 Z"
+            android:strokeColor="#3B82F6"
+            android:strokeWidth="1"
+            android:strokeAlpha="0.4"
+            android:fillColor="#00000000" />
+    </group>
 </vector>

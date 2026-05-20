@@ -24,6 +24,12 @@
         </aapt:attr>
     </path>
 
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0.8"
+        android:scaleY="0.8">
+
     <!-- Decorative background outer circle representing the golden ring -->
     <path
         android:pathData="M54,18 C73.88,18 90,34.12 90,54 C90,73.88 73.88,90 54,90 C34.12,90 18,73.88 18,54 C18,34.12 34.12,18 54,18 Z"
@@ -201,5 +207,7 @@
         android:strokeWidth="1.6"
         android:strokeLineCap="round"
         android:fillColor="#00000000" />
+
+    </group>
 
 </vector>
