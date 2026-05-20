@@ -113,10 +113,8 @@
             <path
                 android:pathData="M-10,1 L10,1 L10,3 L-10,3 Z"
                 android:fillColor="#DC2626" />
-            <circle
-                android:cx="0"
-                android:cy="4.5"
-                android:r="1.8"
+            <path
+                android:pathData="M 0,2.7 A 1.8,1.8 0 1,0 0,6.3 A 1.8,1.8 0 1,0 0,2.7"
                 android:fillColor="#FBBF24" />
         </group>
 
@@ -147,10 +145,8 @@
             <path
                 android:pathData="M-10,1 L10,1 L10,3 L-10,3 Z"
                 android:fillColor="#DC2626" />
-            <circle
-                android:cx="0"
-                android:cy="4.5"
-                android:r="1.8"
+            <path
+                android:pathData="M 0,2.7 A 1.8,1.8 0 1,0 0,6.3 A 1.8,1.8 0 1,0 0,2.7"
                 android:fillColor="#FBBF24" />
         </group>
 
