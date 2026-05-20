@@ -28,9 +28,21 @@ import {
   Share2,
   Check
 } from 'lucide-react';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
 import { Share } from '@capacitor/share';
+
+interface AlarmServicePluginType {
+  startService(options: {
+    theftAlarm: boolean;
+    targetPercentage: number;
+    lowBatteryPercentage: number;
+  }): Promise<{ success: boolean }>;
+  stopService(): Promise<{ success: boolean }>;
+  getServiceState(): Promise<{ running: boolean; isAlarming: boolean; alarmReason: string }>;
+}
+
+const AlarmService = registerPlugin<AlarmServicePluginType>('AlarmService');
 import { Screen, Theme, BatteryState, AlarmConfig, SecurityConfig, AlarmSound } from './types';
 import { useBattery } from './lib/battery';
 import { cn, formatTime } from './lib/utils';
@@ -84,7 +96,7 @@ export default function App() {
     }
   });
 
-  // Automatically monitor and update permissions when user returns to app focus
+  // Automatically monitor and update permissions & sync native alarm service when user returns to app focus
   useEffect(() => {
     const checkNotificationPermission = () => {
       if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -92,9 +104,34 @@ export default function App() {
         setHasNotificationPermission(isGranted);
       }
     };
+
+    const syncNativeServiceState = async () => {
+      if (Capacitor.isNativePlatform()) {
+        try {
+          const state = await AlarmService.getServiceState();
+          if (state.running) {
+            setIsMonitoring(true);
+            if (state.isAlarming && state.alarmReason) {
+              setAlarmReason(state.alarmReason as any);
+              setScreen(Screen.LOCK);
+            }
+          }
+        } catch (e) {
+          console.error("Error syncing native state:", e);
+        }
+      }
+    };
+
     checkNotificationPermission();
-    window.addEventListener('focus', checkNotificationPermission);
-    return () => window.removeEventListener('focus', checkNotificationPermission);
+    syncNativeServiceState();
+
+    const handleFocus = () => {
+      checkNotificationPermission();
+      syncNativeServiceState();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
   }, []);
 
   // Basic Auth setup
@@ -321,10 +358,40 @@ export default function App() {
     return { ...config, theftAlarm: true };
   });
   
-  // Persistence Sync
+  // Persistence Sync & Native Service Sync
   useEffect(() => {
     localStorage.setItem('isMonitoring', JSON.stringify(isMonitoring));
-  }, [isMonitoring]);
+    
+    const syncNativeService = async () => {
+      if (Capacitor.isNativePlatform()) {
+        try {
+          if (isMonitoring) {
+            await AlarmService.startService({
+              theftAlarm: securityConfig.theftAlarm,
+              targetPercentage: alarmConfig.targetPercentage,
+              lowBatteryPercentage: alarmConfig.lowBatteryPercentage
+            });
+          } else {
+            await AlarmService.stopService();
+          }
+        } catch (e) {
+          console.error("Failed to sync Native Foreground Service:", e);
+        }
+      }
+    };
+    syncNativeService();
+  }, [isMonitoring, securityConfig.theftAlarm, alarmConfig.targetPercentage, alarmConfig.lowBatteryPercentage]);
+
+  // Refresh Native Service if alarm is disarmed/dismissed but monitoring is kept active
+  useEffect(() => {
+    if (!alarmReason && isMonitoring && Capacitor.isNativePlatform()) {
+      AlarmService.startService({
+        theftAlarm: securityConfig.theftAlarm,
+        targetPercentage: alarmConfig.targetPercentage,
+        lowBatteryPercentage: alarmConfig.lowBatteryPercentage
+      }).catch(e => console.error("Failed to reset Native Service on disarm:", e));
+    }
+  }, [alarmReason]);
 
   useEffect(() => {
     localStorage.setItem('alarmConfig', JSON.stringify(alarmConfig));
