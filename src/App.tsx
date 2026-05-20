@@ -22,11 +22,11 @@ import {
   Music,
   Upload,
   Info,
-  Languages,
   Users,
   CreditCard,
   Gift,
-  Share2
+  Share2,
+  Check
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
@@ -35,7 +35,7 @@ import { Screen, Theme, BatteryState, AlarmConfig, SecurityConfig, AlarmSound } 
 import { useBattery } from './lib/battery';
 import { cn, formatTime } from './lib/utils';
 import { BatteryIndicator, QuickPreset } from './components/BatteryIndicator';
-import { translations, Language } from './translations';
+import { translations } from './translations';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -44,15 +44,8 @@ import { GoogleAdSense } from './components/GoogleAdSense';
 export default function App() {
   const [screen, setScreen] = useState<Screen>(Screen.SPLASH);
   const [theme, setTheme] = useState<Theme>('dark');
-  const [lang, setLang] = useState<Language>(() => {
-    try {
-      const saved = localStorage.getItem('language');
-      return (saved as Language) || 'en';
-    } catch {
-      return 'en';
-    }
-  });
-  const t = translations[lang] || translations.en;
+  const lang = 'en';
+  const t = translations.en;
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -72,6 +65,37 @@ export default function App() {
   const [targetReachedAlerted, setTargetReachedAlerted] = useState(false);
   const [alarmReason, setAlarmReason] = useState<'theft' | 'full' | 'low' | 'test' | null>(null);
   const wakeLockRef = useRef<any>(null);
+  const silentAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Background Lock-Screen Compatibility & Permissions States
+  const [showPermissionsModal, setShowPermissionsModal] = useState(false);
+  const [hasNotificationPermission, setHasNotificationPermission] = useState(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      return Notification.permission === 'granted';
+    }
+    return false;
+  });
+  const [permissionReminderDismissed, setPermissionReminderDismissed] = useState(() => {
+    try {
+      const saved = localStorage.getItem('permissionReminderDismissed');
+      return saved ? JSON.parse(saved) : false;
+    } catch {
+      return false;
+    }
+  });
+
+  // Automatically monitor and update permissions when user returns to app focus
+  useEffect(() => {
+    const checkNotificationPermission = () => {
+      if (typeof window !== 'undefined' && 'Notification' in window) {
+        const isGranted = Notification.permission === 'granted';
+        setHasNotificationPermission(isGranted);
+      }
+    };
+    checkNotificationPermission();
+    window.addEventListener('focus', checkNotificationPermission);
+    return () => window.removeEventListener('focus', checkNotificationPermission);
+  }, []);
 
   // Basic Auth setup
   useEffect(() => {
@@ -157,22 +181,117 @@ export default function App() {
     if (Ctx && !mainAudioContext) {
       setMainAudioContext(new Ctx());
     }
+
+    // Initialize silent background audio element to prevent browser sleep when screen is locked
+    const audio = new window.Audio();
+    // 1-second completely silent standard WAV base64
+    audio.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==";
+    audio.loop = true;
+    audio.volume = 0.01;
+    silentAudioRef.current = audio;
+
+    return () => {
+      if (silentAudioRef.current) {
+        try {
+          silentAudioRef.current.pause();
+        } catch (e) {}
+      }
+    };
   }, []);
 
-  // Background Audio Heartbeat to prevent suspension
+  // Background Audio Heartbeat + HTML5 Keepalive audio play/pause + Action Handlers
   useEffect(() => {
+    let osc: OscillatorNode | null = null;
+    let gain: GainNode | null = null;
+
     if (isMonitoring && mainAudioContext && audioUnlocked) {
-      const osc = mainAudioContext.createOscillator();
-      const gain = mainAudioContext.createGain();
-      gain.gain.value = 0.001; // Nearly silent
-      osc.connect(gain);
-      gain.connect(mainAudioContext.destination);
-      osc.start();
-      return () => {
-        try { osc.stop(); } catch(e) {}
-      };
+      // 1. Oscillator Heartbeat
+      try {
+        osc = mainAudioContext.createOscillator();
+        gain = mainAudioContext.createGain();
+        gain.gain.value = 0.001; // Nearly silent
+        osc.connect(gain);
+        gain.connect(mainAudioContext.destination);
+        osc.start();
+      } catch (err) {
+        console.error("Failed to start oscillator heartbeat", err);
+      }
+
+      // 2. Play HTML5 silent background audio loop and register media session
+      if (silentAudioRef.current) {
+        silentAudioRef.current.play()
+          .then(() => {
+            if ('mediaSession' in navigator) {
+              const nav = navigator as any;
+              nav.mediaSession.metadata = new (window as any).MediaMetadata({
+                title: t.appName || "ChargeGuard Pro",
+                artist: t.securedMonitoring || "Active Anti-Theft Guard",
+                album: "ChargeGuard Security System",
+                artwork: [{ src: "/icon.svg", sizes: "512x512", type: "image/svg+xml" }]
+              });
+              nav.mediaSession.playbackState = "playing";
+              
+              // Enable audio commands to signal persistent background media
+              nav.mediaSession.setActionHandler('play', () => {
+                silentAudioRef.current?.play().catch(() => {});
+              });
+              nav.mediaSession.setActionHandler('pause', () => {
+                silentAudioRef.current?.pause();
+              });
+            }
+          })
+          .catch(err => {
+            console.warn("Autoplay or background audio playback was delayed:", err);
+          });
+      }
     }
-  }, [isMonitoring, mainAudioContext, audioUnlocked]);
+
+    return () => {
+      // Clean up oscillator
+      if (osc) {
+        try {
+          osc.stop();
+        } catch (e) {}
+      }
+      // Pause silent audio loop
+      if (silentAudioRef.current) {
+        try {
+          silentAudioRef.current.pause();
+        } catch (e) {}
+      }
+      if ('mediaSession' in navigator) {
+        try {
+          (navigator as any).mediaSession.playbackState = "paused";
+        } catch (e) {}
+      }
+    };
+  }, [isMonitoring, mainAudioContext, audioUnlocked, t]);
+
+  // Persistent System Notification to keep background process alive and signal user visually in status tray
+  useEffect(() => {
+    let activeNotification: any = null;
+    if (isMonitoring && hasNotificationPermission && 'Notification' in window) {
+      try {
+        activeNotification = new Notification(t.appName || "ChargeGuard Pro", {
+          body: t.securedMonitoring || "🛡️ Active Anti-Theft Guard monitoring active...",
+          icon: "/icon.svg",
+          tag: "chargeguard-persistent-bg-alarm",
+          silent: true,
+          badge: "/icon.svg",
+          requireInteraction: true // Keeps it persistent
+        });
+      } catch (err) {
+        console.warn("Could not display background keep-alive notification:", err);
+      }
+    }
+    return () => {
+      if (activeNotification) {
+        try {
+          activeNotification.close();
+        } catch (e) {}
+      }
+    };
+  }, [isMonitoring, hasNotificationPermission, t]);
 
   const [alarmConfig, setAlarmConfig] = useState<AlarmConfig>(() => {
     const saved = localStorage.getItem('alarmConfig');
@@ -292,9 +411,11 @@ export default function App() {
           setAudioUnlocked={setAudioUnlocked} 
           audioContext={mainAudioContext} 
           isNative={isNative} 
-          lang={lang} 
-          setLang={setLang} 
           t={t}
+          showPermissionsModal={showPermissionsModal}
+          setShowPermissionsModal={setShowPermissionsModal}
+          hasNotificationPermission={hasNotificationPermission}
+          setHasNotificationPermission={setHasNotificationPermission}
           onShare={async () => {
              if (user) {
                await Share.share({
@@ -368,6 +489,146 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <AnimatePresence>
+        {showPermissionsModal && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 bg-black/85 backdrop-blur-md z-[100] flex items-center justify-center p-6"
+            id="permissions-modal-overlay"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              className="w-full bg-[#0a0d14] border border-white/10 rounded-[2.5rem] p-6 max-h-[85%] overflow-y-auto relative flex flex-col gap-4 text-left shadow-[0_25px_50px_rgba(0,0,0,0.6)]"
+              id="permissions-modal-card"
+            >
+              {/* Close Button */}
+              <button 
+                onClick={() => setShowPermissionsModal(false)}
+                className="absolute top-5 right-5 w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 hover:text-white text-base transition-colors duration-200"
+                id="permissions-modal-close"
+              >
+                ×
+              </button>
+
+              <div className="flex gap-3 items-center">
+                <div className="w-10 h-10 bg-amber-500/10 text-amber-500 rounded-xl flex items-center justify-center shrink-0">
+                  <ShieldCheck size={22} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black uppercase text-amber-500 tracking-wider">
+                    {t.permissionsHeader}
+                  </h3>
+                  <p className="text-[9px] text-slate-500 font-mono tracking-widest uppercase">lock_uptime_v1.3</p>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-400 font-medium leading-relaxed">
+                {t.permissionLockWarning}
+              </div>
+
+              {/* Step 1: Notifications */}
+              <div className="flex flex-col gap-3 rounded-2xl bg-white/5 border border-white/5 p-4" id="perm-step-notify">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400 shrink-0">
+                      <Bell size={16} />
+                    </div>
+                    <div>
+                      <h4 className="text-[11px] font-black uppercase text-white tracking-wide">
+                        {t.notificationPermissionTitle}
+                      </h4>
+                      <p className="text-[10px] text-slate-400 mt-1 leading-normal">
+                        {t.notificationPermissionDesc}
+                      </p>
+                    </div>
+                  </div>
+                  <div>
+                    {hasNotificationPermission ? (
+                      <span className="text-[9pt] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">ACTIVE</span>
+                    ) : (
+                      <span className="text-[9pt] bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full font-bold">REQUIRED</span>
+                    )}
+                  </div>
+                </div>
+
+                {!hasNotificationPermission && (
+                  <button
+                    onClick={async () => {
+                      if ('Notification' in window) {
+                        try {
+                          const perm = await Notification.requestPermission();
+                          if (perm === 'granted') {
+                            setHasNotificationPermission(true);
+                          }
+                        } catch (e) {
+                          console.error(e);
+                        }
+                      }
+                    }}
+                    className="w-full bg-[#00FF88] hover:bg-[#00e077] text-black font-black text-[10px] uppercase tracking-wider py-2.5 rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Power size={12} /> {t.grantPermission}
+                  </button>
+                )}
+              </div>
+
+              {/* Step 2: Battery Settings */}
+              <div className="flex flex-col gap-3 rounded-2xl bg-white/5 border border-white/5 p-4" id="perm-step-battery">
+                <div className="flex gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400 shrink-0">
+                    <Battery size={16} />
+                  </div>
+                  <div>
+                    <h4 className="text-[11px] font-black uppercase text-white tracking-wide">
+                      {t.batteryOptimizationTitle}
+                    </h4>
+                    <p className="text-[10px] text-slate-400 mt-1 leading-normal">
+                      {t.batteryOptimizationDesc}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Instruction Checklist */}
+                <div className="bg-black/40 rounded-xl p-3.5 flex flex-col gap-2 border border-white/5">
+                  <p className="text-[9px] font-black uppercase text-slate-500 tracking-wider">
+                    How to Setup (Step-by-Step):
+                  </p>
+                  <ul className="text-[10px] text-slate-300 space-y-1.5 ml-1 leading-relaxed">
+                    <li>📱 <strong>1. Long press the ChargeGuard Pro icon on your home screen</strong></li>
+                    <li>ℹ️ <strong>2. Tap 'App Info' (ℹ️)</strong></li>
+                    <li>🔋 <strong>3. Tap 'Battery' or 'App battery usage'</strong></li>
+                    <li>⚡ <strong>4. Set recommendation from 'Optimized' to 'Unrestricted'!</strong></li>
+                  </ul>
+                </div>
+              </div>
+
+              <button
+                onClick={() => {
+                  setShowPermissionsModal(false);
+                  localStorage.setItem('permissionReminderDismissed', 'true');
+                  setPermissionReminderDismissed(true);
+                  if (mainAudioContext) {
+                    mainAudioContext.resume();
+                  }
+                  // Clean arm the alarm if notifications are accepted or skipped
+                  setIsMonitoring(true);
+                }}
+                className="w-full bg-[#00FF88] hover:bg-[#00e077] text-black font-black text-xs uppercase tracking-wider py-3 rounded-2xl mt-1 transition-all active:scale-95 shadow-[0_4px_20px_rgba(0,255,136,0.25)] text-center cursor-pointer"
+                id="permissions-modal-dismiss"
+              >
+                {t.gotIt}
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+
 
       {/* Navigation Bar (Mobile Style) */}
       {screen !== Screen.SPLASH && screen !== Screen.LOCK && (
@@ -459,7 +720,25 @@ function SplashScreen({ t }: any) {
   );
 }
 
-function HomeScreen({ battery, config, setConfig, isMonitoring, setMonitoring, setScreen, audioUnlocked, setAudioUnlocked, audioContext, onTest, isNative, lang, setLang, t, onShare }: any) {
+function HomeScreen({ 
+  battery, 
+  config, 
+  setConfig, 
+  isMonitoring, 
+  setMonitoring, 
+  setScreen, 
+  audioUnlocked, 
+  setAudioUnlocked, 
+  audioContext, 
+  onTest, 
+  isNative, 
+  t, 
+  onShare,
+  showPermissionsModal,
+  setShowPermissionsModal,
+  hasNotificationPermission,
+  setHasNotificationPermission
+}: any) {
   return (
     <motion.div 
       initial={{ opacity: 0 }} 
@@ -475,24 +754,13 @@ function HomeScreen({ battery, config, setConfig, isMonitoring, setMonitoring, s
           <h1 className="text-2xl font-bold tracking-tight text-white">{t.appName}<span className="text-accent">.</span></h1>
         </div>
         <div className="flex gap-4">
-          <button 
-            onClick={() => setLang(lang === 'en' ? 'hi' : 'en')}
-            className="w-10 h-10 bg-slate-900 border border-slate-800 rounded-full flex items-center justify-center text-accent"
-          >
-            <Languages size={18} />
-          </button>
           <button onClick={() => setScreen(Screen.ALARM_SETTINGS)} className="w-10 h-10 bg-slate-900 border border-slate-800 rounded-full flex items-center justify-center">
             <Settings size={18} />
           </button>
         </div>
       </header>
-
+ 
       <div className="flex-1 grid grid-cols-12 gap-4">
-        {/* AdSense (Runs for Everyone) */}
-        <div className="col-span-12">
-          <GoogleAdSense slot="1234567890" />
-        </div>
-
         {/* Status indicator and Master Toggle */}
         <div className="col-span-12 glass-card relative overflow-hidden flex flex-col items-center justify-center p-6">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,#00FF8810,transparent_70%)] opacity-50"></div>
@@ -510,7 +778,7 @@ function HomeScreen({ battery, config, setConfig, isMonitoring, setMonitoring, s
             </div>
           </div>
         </div>
-
+ 
         {/* Alarm Threshold */}
         <div className="col-span-12 bento-card flex flex-col justify-between p-6">
            <div className="flex justify-between items-center mb-4">
@@ -543,15 +811,15 @@ function HomeScreen({ battery, config, setConfig, isMonitoring, setMonitoring, s
            
            <div className="grid grid-cols-6 gap-2 mb-4">
             {[75, 80, 85, 90, 95, 100].map(p => (
-              <QuickPreset 
-                key={p} 
-                value={p} 
-                active={config.targetPercentage === p} 
-                onClick={() => setConfig({ ...config, targetPercentage: p })} 
-              />
+               <QuickPreset 
+                 key={p} 
+                 value={p} 
+                 active={config.targetPercentage === p} 
+                 onClick={() => setConfig({ ...config, targetPercentage: p })} 
+               />
             ))}
            </div>
-
+ 
            <div className="flex items-center gap-4">
              <span className="text-[9px] font-bold text-slate-600">1%</span>
              <input 
@@ -565,46 +833,14 @@ function HomeScreen({ battery, config, setConfig, isMonitoring, setMonitoring, s
              <span className="text-[9px] font-bold text-slate-600">100%</span>
            </div>
         </div>
-
-        {/* Instructions Quick Look */}
-        <div className="col-span-12 glass-card p-4 flex items-center justify-between border-accent/20 bg-accent/5">
-           <div className="flex items-center gap-3">
-             <div className="p-2 bg-accent/20 text-accent rounded-lg"><Info size={16} /></div>
-             <div>
-               <p className="text-[10px] font-bold uppercase text-accent">{t.howToUse}</p>
-               <p className="text-[9px] text-slate-500">{t.step1}</p>
-             </div>
-           </div>
-           <button 
-             onClick={() => setScreen(Screen.ALARM_SETTINGS)}
-             className="text-[9px] font-black text-accent uppercase underline underline-offset-4"
-           >
-             {t.settings}
-           </button>
+ 
+        {/* AdSense (Moved from Top) */}
+        <div className="col-span-12 mt-2">
+          <GoogleAdSense slot="1234567890" />
         </div>
-
-      {/* Status indicator and Master Toggle */}
+ 
+        {/* Master Toggle */}
         <div className="col-span-12 flex flex-col gap-4 mt-2">
-          <div className="bg-slate-900/50 border border-slate-800/50 rounded-2xl p-4 flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className={cn("w-2 h-2 rounded-full", isMonitoring ? "bg-[#00FF88] animate-pulse shadow-[0_0_8px_#00FF88]" : "bg-slate-700")}></div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                  {isMonitoring ? t.backgroundActive : t.waitingActivation}
-                </p>
-              </div>
-              <div className="flex items-center gap-2 text-[9px] font-bold text-[#00FF88]">
-                <Shield size={12} />
-                <span>{t.stayAwake}</span>
-              </div>
-            </div>
-            {isNative && isMonitoring && (
-              <p className="text-[8px] text-slate-500 font-medium italic">
-                Tip: Keep app open or exclude from Battery Optimization for best results on Android.
-              </p>
-            )}
-          </div>
-
           <div className="bg-[#00FF88] rounded-[2rem] p-1 flex shadow-[0_20px_50px_rgba(0,255,136,0.2)]">
             <button 
               onClick={() => {
@@ -612,6 +848,13 @@ function HomeScreen({ battery, config, setConfig, isMonitoring, setMonitoring, s
                 if (audioContext) {
                   audioContext.resume();
                 }
+
+                // If they haven't set up background notifications allow permission, prompt them first so background alarms works flawlessly!
+                if (!hasNotificationPermission) {
+                  setShowPermissionsModal(true);
+                  return;
+                }
+
                 setMonitoring(!isMonitoring);
               }}
               className="flex-1 min-h-[80px] bg-black text-white rounded-[1.8rem] flex items-center justify-center gap-4 relative overflow-hidden group transition-all active:scale-95"
@@ -653,6 +896,31 @@ function HomeScreen({ battery, config, setConfig, isMonitoring, setMonitoring, s
             </button>
           </div>
         </div>
+
+        {/* Play Store & Lock Screen Uptime Warning Banner */}
+        {!hasNotificationPermission && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="col-span-12 bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 flex flex-col gap-3 relative overflow-hidden"
+          >
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-500 shrink-0 mt-0.5">
+                <Shield size={16} className="animate-pulse" />
+              </div>
+              <div className="flex-1">
+                <h4 className="text-[11px] font-black tracking-wider uppercase text-amber-500">{t.permissionsRequired}</h4>
+                <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">{t.permissionLockWarning}</p>
+              </div>
+            </div>
+            <button 
+              onClick={() => setShowPermissionsModal(true)}
+              className="w-full bg-amber-500 hover:bg-amber-600 text-black font-black text-[10px] tracking-wider uppercase py-2.5 rounded-xl transition-all duration-200 cursor-pointer text-center"
+            >
+              🛠️ Quick Setup For Lock-Screen
+            </button>
+          </motion.div>
+        )}
       </div>
 
       <footer className="mt-8 flex justify-between items-center text-slate-500 text-[10px] font-bold uppercase tracking-widest">
@@ -932,6 +1200,8 @@ function AlarmSettings({ config, setConfig, onBack, t }: any) {
         <SettingsRow icon={Repeat} label={t.continuousLoop} enabled={config.repeat} onToggle={() => setConfig({...config, repeat: !config.repeat})} />
         <SettingsRow icon={Mic} label={t.voiceAlerts} enabled={config.voiceAlert} onToggle={() => setConfig({...config, voiceAlert: !config.voiceAlert})} />
         
+
+        
         <div className="bento-card space-y-4">
           <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{t.alarmColor}</h3>
           <div className="flex gap-4 justify-between">
@@ -993,6 +1263,8 @@ function SecurityScreen({ onBack, t }: any) {
             <span className="text-xs font-medium">{t.verificationBypassed}</span>
           </div>
         </div>
+
+        <GoogleAdSense slot="3456789012" />
       </div>
     </motion.div>
   );
@@ -1002,34 +1274,22 @@ function HistoryScreen({ t }: any) {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-8 space-y-8 pb-32">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold tracking-tight">{t.chargingHistory}</h2>
+        <h2 className="text-2xl font-bold tracking-tight">{t.recentSessions}</h2>
         <div className="p-2 bg-accent/10 text-accent rounded-lg"><History size={20} /></div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bento-card text-center">
-            <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-1">{t.weeklyAvg}</p>
-            <p className="text-2xl font-bold text-white">1.2h</p>
-        </div>
-        <div className="bento-card text-center">
-            <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-1">{t.fullCycles}</p>
-            <p className="text-2xl font-bold text-accent">14</p>
-        </div>
-      </div>
-
       <div className="space-y-4">
-        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-600">{t.recentSessions}</h3>
         {[
-          { date: 'Today, 2:45 PM', level: '100%', duration: '45m', type: 'Full Charge' },
-          { date: 'Yesterday, 8:10 AM', level: '85%', duration: '1h 10m', type: 'Partial' },
-          { date: '14 May, 11:20 PM', level: '100%', duration: '2h 15m', type: 'Full Charge' },
-          { date: '13 May, 4:30 PM', level: '90%', duration: '30m', type: 'Partial' },
+          { date: `${t.todayLog || 'Today'}, 2:45 PM`, level: '100%', duration: '45m', type: t.fullCharge || 'Full Charge' },
+          { date: `${t.yesterdayLog || 'Yesterday'}, 8:10 AM`, level: '85%', duration: '1h 10m', type: t.partialCharge || 'Partial' },
+          { date: `${t.may14Log || '14 May'}, 11:20 PM`, level: '100%', duration: '2h 15m', type: t.fullCharge || 'Full Charge' },
+          { date: `${t.may13Log || '13 May'}, 4:30 PM`, level: '90%', duration: '30m', type: t.partialCharge || 'Partial' },
         ].map((log, i) => (
           <div key={i} className="bento-card flex justify-between items-center bg-slate-900/30 border-slate-800/50">
             <div className="flex items-center gap-4">
               <div className={cn(
                 "p-3 rounded-2xl",
-                log.type === 'Full Charge' ? "bg-accent/10 text-accent" : "bg-blue-500/10 text-blue-500"
+                (log.type === (t.fullCharge || 'Full Charge')) ? "bg-accent/10 text-accent" : "bg-blue-500/10 text-blue-500"
               )}>
                 <Zap size={20} />
               </div>
@@ -1039,12 +1299,14 @@ function HistoryScreen({ t }: any) {
               </div>
             </div>
             <div className="text-right">
-              <p className={cn("font-mono font-bold", log.type === 'Full Charge' ? "text-accent" : "text-white")}>{log.level}</p>
+              <p className={cn("font-mono font-bold", (log.type === (t.fullCharge || 'Full Charge')) ? "text-accent" : "text-white")}>{log.level}</p>
               <p className="text-[9px] text-slate-600 uppercase tracking-widest">{t.logged}</p>
             </div>
           </div>
         ))}
       </div>
+
+      <GoogleAdSense slot="4567890123" />
     </motion.div>
   );
 }
@@ -1064,16 +1326,16 @@ function HealthScreen({ battery, onBack, t }: any) {
 
   const currentTips = [
     {
-      title: "The 20-80 Rule",
-      tip: "Keep battery between 20% and 80% for longevity.",
-      detail: "Lithium-ion batteries experience less stress when kept in this range.",
+      title: t.rule2080Title || "The 20-80 Rule",
+      tip: t.rule2080Tip || "Keep battery between 20% and 80% for longevity.",
+      detail: t.rule2080Detail || "Lithium-ion batteries experience less stress when kept in this range.",
       icon: Battery,
       stat: t.optimal
     },
     {
-      title: "Thermal Management",
-      tip: "Avoid fast charging if the device is already hot.",
-      detail: "Heat is the #1 enemy of battery health.",
+      title: t.thermalTitle || "Thermal Management",
+      tip: t.thermalTip || "Avoid fast charging if the device is already hot.",
+      detail: t.thermalDetail || "Heat is the #1 enemy of battery health.",
       icon: Thermometer,
       stat: t.healthy
     }
@@ -1102,9 +1364,7 @@ function HealthScreen({ battery, onBack, t }: any) {
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <StatusHealthItem label={t.cycleCount} value="142" sub={t.optimal} />
         <StatusHealthItem label={t.avgTemp} value="32°C" sub={t.healthy} />
-        <StatusHealthItem label={t.capacity} value="4820" sub="mAh" />
         <StatusHealthItem label={t.technology} value="Li-ion" sub={t.verified} />
       </div>
 
@@ -1116,6 +1376,8 @@ function HealthScreen({ battery, onBack, t }: any) {
           ))}
         </div>
       </div>
+
+      <GoogleAdSense slot="7890123456" />
     </motion.div>
   );
 }
