@@ -195,10 +195,11 @@
         android:strokeWidth="1.2"
         android:strokeLineCap="round"
         android:fillColor="#00000000" />
-    <circle
-        android:cx="33"
-        android:cy="75"
-        android:r="0.8"
-        android:fillColor="#FFFFFF" />
+    <path
+        android:pathData="M33,75 L33,75"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
 
 </vector>
