@@ -10,6 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      HAS_SIGNING_KEY: ${{ secrets.SIGNING_KEY != '' }}
 
     steps:
       - name: Checkout Source
@@ -88,28 +89,28 @@ jobs:
           fi
 
       - name: Upload Signed Release APK (Direct Install)
-        if: ${{ secrets.SIGNING_KEY != '' }}
+        if: env.HAS_SIGNING_KEY == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: Charging-Alarm-Pro-v1.0.${{ github.run_number }}-Signed-APK
           path: android/app/build/outputs/apk/release/app-release.apk
 
       - name: Upload Signed Play Store Bundle (AAB)
-        if: ${{ secrets.SIGNING_KEY != '' }}
+        if: env.HAS_SIGNING_KEY == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: Charging-Alarm-Pro-v1.0.${{ github.run_number }}-Signed-AAB
           path: android/app/build/outputs/bundle/release/app-release.aab
 
       - name: Upload Unsigned Play Store Bundle (AAB) (Fallback)
-        if: ${{ secrets.SIGNING_KEY == '' }}
+        if: env.HAS_SIGNING_KEY != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: Charging-Alarm-Pro-v1.0.${{ github.run_number }}-Unsigned-AAB
           path: android/app/build/outputs/bundle/release/app-release.aab
 
       - name: Upload Testing APK (Fallback Installable)
-        if: ${{ secrets.SIGNING_KEY == '' }}
+        if: env.HAS_SIGNING_KEY != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: Charging-Alarm-Pro-v1.0.${{ github.run_number }}-Testing-APK
