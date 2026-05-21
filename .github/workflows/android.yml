@@ -53,47 +53,63 @@ jobs:
           gradle wrapper --gradle-version 8.7 --distribution-type all
           chmod +x gradlew
 
-      - name: Build Play Store Bundle (AAB) & Testing APK
+      - name: Prepare and Decode Keystore File
+        run: |
+          if [ -z "${{ secrets.SIGNING_KEY }}" ]; then
+            echo "No SIGNING_KEY secret found. Fallback build will be unsigned."
+          else
+            echo "SIGNING_KEY found. Decoding cleanly into android/app/release.keystore..."
+            mkdir -p android/app
+            # tr -d '\r\n ' removes any hidden newlines or spaces added by accidental copy-paste in GitHub
+            echo "${{ secrets.SIGNING_KEY }}" | tr -d '\r\n ' | base64 --decode > android/app/release.keystore
+            echo "Keystore decoded successfully."
+            ls -lh android/app/release.keystore
+          fi
+
+      - name: Build Android App Bundle and APK
+        env:
+          SIGNING_STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           cd android
-          # Build both AAB for Play Store and Debug APK for manual installation/testing
-          ./gradlew clean bundleRelease assembleDebug \
-            -Pandroid.injected.version.code=${{ github.run_number }} \
-            -Pandroid.injected.version.name="1.0.${{ github.run_number }}" \
-            --stacktrace
+          if [ -f "app/release.keystore" ]; then
+            echo "--- Detected release.keystore! Building Signed APK and Signed AAB ---"
+            ./gradlew clean bundleRelease assembleRelease \
+              -Pandroid.injected.version.code=${{ github.run_number }} \
+              -Pandroid.injected.version.name="1.0.${{ github.run_number }}" \
+              --stacktrace
+          else
+            echo "--- No release.keystore found. Building fallback Unsigned AAB and Debug Testing APK ---"
+            ./gradlew clean bundleRelease assembleDebug \
+              -Pandroid.injected.version.code=${{ github.run_number }} \
+              -Pandroid.injected.version.name="1.0.${{ github.run_number }}" \
+              --stacktrace
+          fi
 
-      - name: Sign App Bundle (AAB) for Google Play
-        if: env.HAS_SIGNING_KEY == 'true'
-        id: sign_app
-        uses: r0adkll/sign-android-release@v1
+      - name: Upload Signed Release APK (Direct Install)
+        if: ${{ secrets.SIGNING_KEY != '' }}
+        uses: actions/upload-artifact@v4
         with:
-          releaseDirectory: android/app/build/outputs/bundle/release
-          signingKeyBase64: ${{ secrets.SIGNING_KEY }}
-          alias: ${{ secrets.ALIAS }}
-          keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
-          keyPassword: ${{ secrets.KEY_PASSWORD }}
-        env:
-          HAS_SIGNING_KEY: ${{ secrets.SIGNING_KEY != '' }}
+          name: Charging-Alarm-Pro-v1.0.${{ github.run_number }}-Signed-APK
+          path: android/app/build/outputs/apk/release/app-release.apk
 
       - name: Upload Signed Play Store Bundle (AAB)
-        if: env.HAS_SIGNING_KEY == 'true'
+        if: ${{ secrets.SIGNING_KEY != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: Charging-Alarm-Pro-v1.0.${{ github.run_number }}-Signed-AAB
-          path: ${{ steps.sign_app.outputs.signedReleaseFile }}
-        env:
-          HAS_SIGNING_KEY: ${{ secrets.SIGNING_KEY != '' }}
+          path: android/app/build/outputs/bundle/release/app-release.aab
 
       - name: Upload Unsigned Play Store Bundle (AAB) (Fallback)
-        if: env.HAS_SIGNING_KEY != 'true'
+        if: ${{ secrets.SIGNING_KEY == '' }}
         uses: actions/upload-artifact@v4
         with:
           name: Charging-Alarm-Pro-v1.0.${{ github.run_number }}-Unsigned-AAB
           path: android/app/build/outputs/bundle/release/app-release.aab
-        env:
-          HAS_SIGNING_KEY: ${{ secrets.SIGNING_KEY != '' }}
 
-      - name: Upload Testing APK (Installable)
+      - name: Upload Testing APK (Fallback Installable)
+        if: ${{ secrets.SIGNING_KEY == '' }}
         uses: actions/upload-artifact@v4
         with:
           name: Charging-Alarm-Pro-v1.0.${{ github.run_number }}-Testing-APK
