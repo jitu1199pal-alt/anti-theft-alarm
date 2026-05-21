@@ -130,7 +130,7 @@ export interface AppTranslations {
 }
 
 const translationsEn: AppTranslations = {
-  appName: "ChargeGuard Pro",
+  appName: "Charging Alarm Pro",
   coreSystem: "Core System",
   shieldActive: "Shield Active",
   backgroundActive: "Background Active",
@@ -236,7 +236,7 @@ const translationsEn: AppTranslations = {
 };
 
 const translationsHi: AppTranslations = {
-  appName: "ChargeGuard Pro",
+  appName: "Charging Alarm Pro",
   coreSystem: "कोर सिस्टम",
   shieldActive: "शील्ड सक्रिय",
   backgroundActive: "बैकग्राउंड सक्रिय",
@@ -345,7 +345,7 @@ const translationsHi: AppTranslations = {
 const buildTranslation = (langName: string, overrides: Partial<AppTranslations>): AppTranslations => {
   return {
     ...translationsEn,
-    appName: "ChargeGuard Pro",
+    appName: "Charging Alarm Pro",
     language: langName,
     ...overrides
   };

@@ -129,7 +129,6 @@ public class AlarmService extends Service {
         if (isFirstCheck) {
             wasChargingOnStart = isCharging;
             isFirstCheck = false;
-            return;
         }
 
         if (isAlarmActive) {
@@ -193,13 +192,25 @@ public class AlarmService extends Service {
             return;
         }
         try {
-            mediaPlayer = new MediaPlayer();
-            Uri soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
-            if (soundUri == null) {
-                soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
+            // Try playing from raw bundled alarm resource first
+            try {
+                int rawId = getResources().getIdentifier("alarm", "raw", getPackageName());
+                if (rawId != 0) {
+                    mediaPlayer = MediaPlayer.create(this, rawId);
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
             }
-            mediaPlayer.setDataSource(this, soundUri);
-            
+
+            if (mediaPlayer == null) {
+                mediaPlayer = new MediaPlayer();
+                Uri soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
+                if (soundUri == null) {
+                    soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
+                }
+                mediaPlayer.setDataSource(this, soundUri);
+            }
+
             AudioAttributes audioAttributes = new AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_ALARM)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -213,8 +224,18 @@ public class AlarmService extends Service {
                 audioManager.setStreamVolume(AudioManager.STREAM_ALARM, maxVol, 0);
             }
 
-            mediaPlayer.prepare();
-            mediaPlayer.start();
+            // Start playing
+            if (mediaPlayer != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    // Prepared automatically if created via MediaPlayer.create, but check if we need prep
+                }
+                try {
+                    mediaPlayer.start();
+                } catch (IllegalStateException e) {
+                    mediaPlayer.prepare();
+                    mediaPlayer.start();
+                }
+            }
         } catch (Exception e) {
             e.printStackTrace();
         }

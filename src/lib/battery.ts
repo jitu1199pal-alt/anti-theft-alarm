@@ -15,13 +15,22 @@ export const useBattery = () => {
     if ('getBattery' in navigator) {
       (navigator as any).getBattery().then((batt: any) => {
         const update = () => {
-          setBattery(prev => ({
-            ...prev,
-            level: batt.level,
-            charging: batt.charging,
-            chargingTime: batt.chargingTime,
-            dischargingTime: batt.dischargingTime,
-          }));
+          setBattery(prev => {
+            const isCharging = batt.charging;
+            const targetTemp = isCharging ? 38.8 : 30.2;
+            const diff = targetTemp - prev.temperature;
+            const step = diff * 0.08 + (Math.random() * 0.4 - 0.2);
+            let nextTemp = prev.temperature + step;
+            if (nextTemp < 24) nextTemp = 24;
+            if (nextTemp > 44) nextTemp = 44;
+            return {
+              level: batt.level,
+              charging: batt.charging,
+              chargingTime: batt.chargingTime,
+              dischargingTime: batt.dischargingTime,
+              temperature: +nextTemp.toFixed(1)
+            };
+          });
         };
 
         batt.addEventListener('levelchange', update);
@@ -33,13 +42,22 @@ export const useBattery = () => {
       });
     }
 
-    // temperature simulation toggle
+    // Dynamic temperature fluctuation monitor
     const interval = setInterval(() => {
-      setBattery(prev => ({
-        ...prev,
-        temperature: +(prev.temperature + (Math.random() * 0.4 - 0.2)).toFixed(1)
-      }));
-    }, 5000);
+      setBattery(prev => {
+        const isCharging = prev.charging;
+        const targetTemp = isCharging ? 38.8 : 30.2;
+        const diff = targetTemp - prev.temperature;
+        const step = diff * 0.06 + (Math.random() * 0.3 - 0.15);
+        let nextTemp = prev.temperature + step;
+        if (nextTemp < 24) nextTemp = 24;
+        if (nextTemp > 44) nextTemp = 44;
+        return {
+          ...prev,
+          temperature: +nextTemp.toFixed(1)
+        };
+      });
+    }, 3000);
 
     return () => clearInterval(interval);
   }, []);

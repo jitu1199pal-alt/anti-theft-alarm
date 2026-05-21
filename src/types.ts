@@ -40,6 +40,7 @@ export interface AlarmConfig {
   voiceAlert: boolean;
   alarmColor?: string;
   tempWarningLevel: number;
+  batteryCapacity?: number;
 }
 
 export interface SecurityConfig {
