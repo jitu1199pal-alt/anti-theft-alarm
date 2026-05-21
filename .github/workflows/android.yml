@@ -78,8 +78,8 @@ jobs:
           else
             echo "SIGNING_KEY found. Decoding cleanly into android/app/release.keystore..."
             mkdir -p android/app
-            # printf and tr are used to ensure the exact base64 payload is passed to the decoder without any shell interpolation or trailing newlines
-            printf "%s" "${{ secrets.SIGNING_KEY }}" | tr -d '\r\n ' | base64 --decode > android/app/release.keystore
+            # printf and tr are used to ensure the exact base64 payload is passed to the decoder without any shell interpolation, trailing newlines or accidental quotes
+            printf "%s" "${{ secrets.SIGNING_KEY }}" | tr -d '\r\n "' | tr -d "'" | base64 --decode > android/app/release.keystore
             echo "Keystore decoded successfully."
             ls -lh android/app/release.keystore
           fi
