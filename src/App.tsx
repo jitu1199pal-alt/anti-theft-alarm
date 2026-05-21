@@ -1668,8 +1668,10 @@ function AlarmSettings({ config, setConfig, onBack, t }: any) {
 }
 
 function SecurityScreen({ onBack, t }: any) {
+  const [showPrivacy, setShowPrivacy] = useState(false);
+
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-8 space-y-8 pb-32">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-8 space-y-8 pb-32 relative">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="p-2 bg-slate-900 border border-slate-800 rounded-xl"><ChevronRight size={20} className="rotate-180" /></button>
@@ -1708,8 +1710,94 @@ function SecurityScreen({ onBack, t }: any) {
           </div>
         </div>
 
+        {/* Dynamic Privacy Card compliant with Google Play Policy */}
+        <div className="bento-card bg-slate-900/50 border border-slate-800">
+          <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 mb-3 flex items-center gap-2">
+            <ShieldCheck size={14} className="text-accent" /> Privacy & Policy / गोपनीयता नीति
+          </h3>
+          <p className="text-xs text-slate-400 leading-relaxed mb-4">
+            Our app processes security alerts and charging statuses locally. We collect no personal identifiable profiles.
+          </p>
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setShowPrivacy(true)}
+              className="text-xs font-bold text-accent hover:underline flex items-center gap-1 bg-accent/10 px-3 py-1.5 rounded-lg border border-accent/20 cursor-pointer"
+            >
+              <Info size={13} /> View Policy
+            </button>
+            <a 
+              href="/privacy.html" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="text-xs text-slate-300 hover:text-white hover:underline flex items-center gap-1 bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700"
+            >
+              <Share2 size={13} /> Play Store Link
+            </a>
+          </div>
+        </div>
+
         <GoogleAdSense slot="3456789012" />
       </div>
+
+      {/* Modern sliding overlay modal for on-device privacy readability */}
+      {showPrivacy && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-end justify-center p-4">
+          <motion.div 
+            initial={{ y: 100, opacity: 0 }} 
+            animate={{ y: 0, opacity: 1 }} 
+            className="bg-slate-950 border border-slate-800 w-full max-w-md max-h-[75vh] rounded-2xl p-6 overflow-y-auto space-y-6 shadow-2xl"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h3 className="text-sm font-extrabold text-white flex items-center gap-2">
+                <Shield size={18} className="text-accent" /> Privacy & Permissions
+              </h3>
+              <button 
+                onClick={() => setShowPrivacy(false)} 
+                className="text-xs bg-slate-800 hover:bg-slate-755 text-white px-3 py-1 rounded-full border border-slate-700 cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="text-xs text-slate-300 space-y-4 leading-relaxed">
+              <section className="space-y-2">
+                <h4 className="font-bold text-white text-xs uppercase tracking-wider text-accent border-l-2 border-accent pl-2">Data Protection Minimization</h4>
+                <p>
+                  <strong>No Personal Data Harvesting:</strong> We do NOT collect, read, or upload any personal demographics, real email directories, SIM card values, contacts, or real GPS coordinates.
+                </p>
+                <p>
+                  <strong>Local Persistence:</strong> Configuration settings, alarms log history, and custom presets compile fully client-side and rest in standard Sandboxed Android Storage.
+                </p>
+              </section>
+
+              <section className="space-y-2">
+                <h4 className="font-bold text-white text-xs uppercase tracking-wider text-accent border-l-2 border-accent pl-2">Why we require Android permissions</h4>
+                <div className="space-y-2">
+                  <p><strong>• FOREGROUND_SERVICE (Special Use):</strong> Resolves state changes when the app goes background, rendering responsive alerts dynamically.</p>
+                  <p><strong>• SYSTEM_ALERT_WINDOW:</strong> Renders secure disarm keypads instantly on top of device lockscreens during alarms.</p>
+                  <p><strong>• DISABLE_KEYGUARD:</strong> Assists instant overlay inputs without safety bypass collisions.</p>
+                  <p><strong>• WAKE_LOCK:</strong> Preserves responsive alert routines by keeping sensors tracking continuously.</p>
+                  <p><strong>• RECEIVE_BOOT_COMPLETED:</strong> Revives sentinel protection immediately upon hardware power restarts.</p>
+                </div>
+              </section>
+
+              <section className="space-y-2 bg-slate-900/60 p-3 rounded-lg border border-slate-800/80">
+                <h4 className="font-bold text-white text-xs uppercase tracking-wider text-accent border-l-2 border-accent pl-2">गोपनीयता नीति (Hindi)</h4>
+                <p className="text-slate-400 font-sans">
+                  <strong>कोई व्यक्तिगत डेटा संग्रह नहीं:</strong> यह ऐप आपका नाम, ईमेल, संपर्क, या वास्तविक लोकेशन आदि किसी भी प्रकार के व्यक्तिगत डेटा का संग्रह अथवा स्थानांतरण बिल्कुल नहीं करता है।
+                </p>
+                <p className="text-slate-400 font-sans">
+                  <strong>स्थानीय संग्रहण:</strong> अलार्म पासवर्ड (PIN), सेटिंग्स एवं इतिहास केवल आपके स्वयं के डिवाइस पर सुरक्षित रहते हैं।
+                </p>
+              </section>
+
+              <div className="text-[10px] text-slate-500 text-center pt-4 border-t border-slate-800/80">
+                Authorized Controller Support: jitu1199pal@gmail.com
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </motion.div>
   );
 }
