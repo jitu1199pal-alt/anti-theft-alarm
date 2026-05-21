@@ -55,31 +55,40 @@ jobs:
           chmod +x gradlew
 
       - name: Prepare and Decode Keystore File
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          ALIAS: ${{ secrets.ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           echo "=== Diagnostic Check: Verifying Secrets Presence ==="
-          if [ -z "${{ secrets.SIGNING_KEY }}" ]; then
+          if [ -z "$SIGNING_KEY" ]; then
             echo "⚠️ SIGNING_KEY secret is MISSING or EMPTY! Build will fall back to unsigned."
           else
             echo "✅ SIGNING_KEY secret is present."
           fi
-          if [ -z "${{ secrets.KEYSTORE_PASSWORD }}" ]; then
+          if [ -z "$KEYSTORE_PASSWORD" ]; then
             echo "⚠️ KEYSTORE_PASSWORD secret is MISSING or EMPTY!"
           fi
-          if [ -z "${{ secrets.ALIAS }}" ]; then
+          if [ -z "$ALIAS" ]; then
             echo "⚠️ ALIAS secret is MISSING or EMPTY!"
           fi
-          if [ -z "${{ secrets.KEY_PASSWORD }}" ]; then
+          if [ -z "$KEY_PASSWORD" ]; then
             echo "⚠️ KEY_PASSWORD secret is MISSING or EMPTY!"
           fi
           echo "=================================================="
 
-          if [ -z "${{ secrets.SIGNING_KEY }}" ]; then
+          if [ -z "$SIGNING_KEY" ]; then
             echo "No SIGNING_KEY secret found. Fallback build will be unsigned."
           else
             echo "SIGNING_KEY found. Decoding cleanly into android/app/release.keystore..."
             mkdir -p android/app
-            # printf and tr are used to ensure the exact base64 payload is passed to the decoder without any shell interpolation, trailing newlines or accidental quotes
-            printf "%s" "${{ secrets.SIGNING_KEY }}" | tr -d '\r\n "' | tr -d "'" | base64 --decode > android/app/release.keystore
+            node -e "
+              const fs = require('fs');
+              const rawKey = process.env.SIGNING_KEY || '';
+              const cleanKey = rawKey.replace(/[^A-Za-z0-9+/=]/g, '');
+              fs.writeFileSync('android/app/release.keystore', Buffer.from(cleanKey, 'base64'));
+            "
             echo "Keystore decoded successfully."
             ls -lh android/app/release.keystore
           fi
