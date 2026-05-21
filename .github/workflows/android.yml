@@ -62,14 +62,39 @@ jobs:
             -Pandroid.injected.version.name="1.0.${{ github.run_number }}" \
             --stacktrace
 
-      - name: Upload Play Store Bundle (AAB)
+      - name: Sign App Bundle (AAB) for Google Play
+        if: env.HAS_SIGNING_KEY == 'true'
+        id: sign_app
+        uses: r0adkll/sign-android-release@v1
+        with:
+          releaseDirectory: android/app/build/outputs/bundle/release
+          signingKeyBase64: ${{ secrets.SIGNING_KEY }}
+          alias: ${{ secrets.ALIAS }}
+          keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
+          keyPassword: ${{ secrets.KEY_PASSWORD }}
+        env:
+          HAS_SIGNING_KEY: ${{ secrets.SIGNING_KEY != '' }}
+
+      - name: Upload Signed Play Store Bundle (AAB)
+        if: env.HAS_SIGNING_KEY == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: ChargeGuard-Pro-v1.0.${{ github.run_number }}-PlayStore-AAB
+          name: Charging-Alarm-Pro-v1.0.${{ github.run_number }}-Signed-AAB
+          path: ${{ steps.sign_app.outputs.signedReleaseFile }}
+        env:
+          HAS_SIGNING_KEY: ${{ secrets.SIGNING_KEY != '' }}
+
+      - name: Upload Unsigned Play Store Bundle (AAB) (Fallback)
+        if: env.HAS_SIGNING_KEY != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Charging-Alarm-Pro-v1.0.${{ github.run_number }}-Unsigned-AAB
           path: android/app/build/outputs/bundle/release/app-release.aab
+        env:
+          HAS_SIGNING_KEY: ${{ secrets.SIGNING_KEY != '' }}
 
       - name: Upload Testing APK (Installable)
         uses: actions/upload-artifact@v4
         with:
-          name: ChargeGuard-Pro-v1.0.${{ github.run_number }}-Testing-APK
+          name: Charging-Alarm-Pro-v1.0.${{ github.run_number }}-Testing-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
