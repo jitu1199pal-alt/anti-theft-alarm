@@ -56,13 +56,30 @@ jobs:
 
       - name: Prepare and Decode Keystore File
         run: |
+          echo "=== Diagnostic Check: Verifying Secrets Presence ==="
+          if [ -z "${{ secrets.SIGNING_KEY }}" ]; then
+            echo "⚠️ SIGNING_KEY secret is MISSING or EMPTY! Build will fall back to unsigned."
+          else
+            echo "✅ SIGNING_KEY secret is present."
+          fi
+          if [ -z "${{ secrets.KEYSTORE_PASSWORD }}" ]; then
+            echo "⚠️ KEYSTORE_PASSWORD secret is MISSING or EMPTY!"
+          fi
+          if [ -z "${{ secrets.ALIAS }}" ]; then
+            echo "⚠️ ALIAS secret is MISSING or EMPTY!"
+          fi
+          if [ -z "${{ secrets.KEY_PASSWORD }}" ]; then
+            echo "⚠️ KEY_PASSWORD secret is MISSING or EMPTY!"
+          fi
+          echo "=================================================="
+
           if [ -z "${{ secrets.SIGNING_KEY }}" ]; then
             echo "No SIGNING_KEY secret found. Fallback build will be unsigned."
           else
             echo "SIGNING_KEY found. Decoding cleanly into android/app/release.keystore..."
             mkdir -p android/app
-            # tr -d '\r\n ' removes any hidden newlines or spaces added by accidental copy-paste in GitHub
-            echo "${{ secrets.SIGNING_KEY }}" | tr -d '\r\n ' | base64 --decode > android/app/release.keystore
+            # printf and tr are used to ensure the exact base64 payload is passed to the decoder without any shell interpolation or trailing newlines
+            printf "%s" "${{ secrets.SIGNING_KEY }}" | tr -d '\r\n ' | base64 --decode > android/app/release.keystore
             echo "Keystore decoded successfully."
             ls -lh android/app/release.keystore
           fi
