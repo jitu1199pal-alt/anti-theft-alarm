@@ -40,6 +40,7 @@ interface AlarmServicePluginType {
   }): Promise<{ success: boolean }>;
   stopService(): Promise<{ success: boolean }>;
   getServiceState(): Promise<{ running: boolean; isAlarming: boolean; alarmReason: string }>;
+  requestBatteryOptimization(): Promise<{ success: boolean }>;
 }
 
 const AlarmService = registerPlugin<AlarmServicePluginType>('AlarmService');
@@ -467,6 +468,7 @@ export default function App() {
       if (Capacitor.isNativePlatform()) {
         try {
           if (isMonitoring) {
+            await AlarmService.requestBatteryOptimization();
             await AlarmService.startService({
               theftAlarm: securityConfig.theftAlarm,
               targetPercentage: alarmConfig.targetPercentage,

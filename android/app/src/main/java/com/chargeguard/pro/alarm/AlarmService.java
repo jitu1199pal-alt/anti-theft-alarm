@@ -192,52 +192,45 @@ public class AlarmService extends Service {
             return;
         }
         try {
-            // Try playing from raw bundled alarm resource first
-            try {
-                int rawId = getResources().getIdentifier("alarm", "raw", getPackageName());
-                if (rawId != 0) {
-                    mediaPlayer = MediaPlayer.create(this, rawId);
+            mediaPlayer = new MediaPlayer();
+            
+            // Bypass silent mode by using Alarm stream
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                mediaPlayer.setAudioAttributes(
+                    new AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                );
+            } else {
+                mediaPlayer.setAudioStreamType(AudioManager.STREAM_ALARM);
+            }
+            
+            // Set data source to the raw resource
+            try (android.content.res.AssetFileDescriptor afd = getResources().openRawResourceFd(R.raw.alarm)) {
+                if (afd != null) {
+                    mediaPlayer.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
+                } else {
+                    return; // Fail safe
                 }
             } catch (Exception e) {
                 e.printStackTrace();
+                return;
             }
 
-            if (mediaPlayer == null) {
-                mediaPlayer = new MediaPlayer();
-                Uri soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
-                if (soundUri == null) {
-                    soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
-                }
-                mediaPlayer.setDataSource(this, soundUri);
-            }
-
-            AudioAttributes audioAttributes = new AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ALARM)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build();
-            mediaPlayer.setAudioAttributes(audioAttributes);
             mediaPlayer.setLooping(true);
+            mediaPlayer.prepare();
+            mediaPlayer.start();
             
+            // Also ensure volume is up for alarm stream
             AudioManager audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
             if (audioManager != null) {
                 int maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM);
                 audioManager.setStreamVolume(AudioManager.STREAM_ALARM, maxVol, 0);
             }
-
-            // Start playing
-            if (mediaPlayer != null) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    // Prepared automatically if created via MediaPlayer.create, but check if we need prep
-                }
-                try {
-                    mediaPlayer.start();
-                } catch (IllegalStateException e) {
-                    mediaPlayer.prepare();
-                    mediaPlayer.start();
-                }
-            }
         } catch (Exception e) {
             e.printStackTrace();
+            mediaPlayer = null;
         }
     }
 
@@ -292,7 +285,7 @@ public class AlarmService extends Service {
         Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle(title)
                 .setContentText(desc)
-                .setSmallIcon(android.R.drawable.stat_sys_phone_call)
+                .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentIntent(pendingIntent)
                 .setOngoing(true)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -316,7 +309,7 @@ public class AlarmService extends Service {
         Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle(title)
                 .setContentText(desc)
-                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                .setSmallIcon(R.mipmap.ic_launcher)
                 .setFullScreenIntent(pendingIntent, true)
                 .setContentIntent(pendingIntent)
                 .setOngoing(true)
