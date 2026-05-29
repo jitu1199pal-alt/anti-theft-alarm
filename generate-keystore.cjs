@@ -2,6 +2,15 @@ const fs = require('fs');
 const crypto = require('crypto');
 const forge = require('node-forge');
 
+try {
+  if (fs.existsSync('android/gradlew')) {
+    fs.chmodSync('android/gradlew', 0o755);
+    console.log('Successfully made android/gradlew executable.');
+  }
+} catch (e) {
+  console.warn('Could not make gradlew executable:', e);
+}
+
 function generateSecurePassword(length = 20) {
   // Use a clean alphanumeric set so there are no special char copy-paste issues on phone
   return crypto.randomBytes(length).toString('hex').slice(0, length);
