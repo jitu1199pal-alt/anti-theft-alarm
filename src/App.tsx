@@ -41,6 +41,15 @@ interface AlarmServicePluginType {
   stopService(): Promise<{ success: boolean }>;
   getServiceState(): Promise<{ running: boolean; isAlarming: boolean; alarmReason: string }>;
   requestBatteryOptimization(): Promise<{ success: boolean }>;
+  openAppInfo(): Promise<{ success: boolean }>;
+  openOverlaySettings(): Promise<{ success: boolean }>;
+  openAutoStartSettings(): Promise<{ success: boolean }>;
+  getPermissionsState(): Promise<{ batteryIgnored: boolean; overlayAllowed: boolean }>;
+  saveConfig(options: {
+    theftAlarm: boolean;
+    targetPercentage: number;
+    lowBatteryPercentage: number;
+  }): Promise<{ success: boolean }>;
 }
 
 const AlarmService = registerPlugin<AlarmServicePluginType>('AlarmService');
@@ -187,6 +196,25 @@ export default function App() {
     }
   });
 
+  const [nativePermissions, setNativePermissions] = useState<{
+    batteryIgnored: boolean;
+    overlayAllowed: boolean;
+  }>({
+    batteryIgnored: true,
+    overlayAllowed: true,
+  });
+
+  const fetchNativePermissions = async () => {
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const state = await AlarmService.getPermissionsState();
+        setNativePermissions(state);
+      } catch (e) {
+        console.error("Error fetching permissions state:", e);
+      }
+    }
+  };
+
   // Automatically monitor and update permissions & sync native alarm service when user returns to app focus
   useEffect(() => {
     const checkNotificationPermission = () => {
@@ -214,16 +242,39 @@ export default function App() {
     };
 
     checkNotificationPermission();
+    fetchNativePermissions();
     syncNativeServiceState();
 
     const handleFocus = () => {
       checkNotificationPermission();
+      fetchNativePermissions();
       syncNativeServiceState();
     };
 
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
   }, []);
+
+  // Synchronise native service status in real-time when charging connection changes
+  useEffect(() => {
+    const syncNativeServiceState = async () => {
+      if (Capacitor.isNativePlatform()) {
+        try {
+          const state = await AlarmService.getServiceState();
+          if (state.running) {
+            setIsMonitoring(true);
+            if (state.isAlarming && state.alarmReason) {
+              setAlarmReason(state.alarmReason as any);
+              setScreen(Screen.LOCK);
+            }
+          }
+        } catch (e) {
+          console.error("Error syncing native state:", e);
+        }
+      }
+    };
+    syncNativeServiceState();
+  }, [battery.charging]);
 
   // Basic Auth setup
   useEffect(() => {
@@ -498,7 +549,14 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem('alarmConfig', JSON.stringify(alarmConfig));
-  }, [alarmConfig]);
+    if (Capacitor.isNativePlatform()) {
+      AlarmService.saveConfig({
+        theftAlarm: securityConfig.theftAlarm,
+        targetPercentage: alarmConfig.targetPercentage,
+        lowBatteryPercentage: alarmConfig.lowBatteryPercentage
+      }).catch(e => console.error("Failed to sync AlarmConfig to Native SharedPreferences:", e));
+    }
+  }, [alarmConfig, securityConfig.theftAlarm]);
 
   useEffect(() => {
     localStorage.setItem('securityConfig', JSON.stringify(securityConfig));
@@ -513,13 +571,25 @@ export default function App() {
     }
   }, [battery.temperature, alarmConfig.tempWarningLevel]);
 
+  // Automatically arm alarm (enable monitoring) when charger is plugged in
+  useEffect(() => {
+    if (battery.charging) {
+      setIsMonitoring(true);
+    }
+  }, [battery.charging]);
+
   // Handle Splash Screen
   useEffect(() => {
     if (screen === Screen.SPLASH) {
-      const timer = setTimeout(() => setScreen(Screen.HOME), 1000);
+      const timer = setTimeout(() => {
+        setScreen(Screen.HOME);
+        if (!permissionReminderDismissed) {
+          setShowPermissionsModal(true);
+        }
+      }, 1000);
       return () => clearTimeout(timer);
     }
-  }, [screen]);
+  }, [screen, permissionReminderDismissed]);
 
   // Alert Monitor Logic
   useEffect(() => {
@@ -805,19 +875,49 @@ export default function App() {
                     animate={{ opacity: 1, x: 0 }}
                     className="flex flex-col gap-4"
                   >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center shrink-0">
-                        <Battery size={18} />
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center shrink-0">
+                          <Battery size={18} />
+                        </div>
+                        <h4 className="text-xs font-black uppercase tracking-wider text-white">
+                          चरण 1: बैटरी अनुमति (Battery Permission)
+                        </h4>
                       </div>
-                      <h4 className="text-xs font-black uppercase tracking-wider text-white">
-                        चरण 1: बैटरी अनुमति (Set Battery to Unrestricted)
-                      </h4>
+                      <div>
+                        {nativePermissions.batteryIgnored ? (
+                          <span className="text-[8pt] bg-emerald-500/10 text-[#00FF88] px-2.5 py-1 rounded-full font-bold uppercase transition-all duration-300 border border-emerald-500/20">ACTIVE (सक्रिय)</span>
+                        ) : (
+                          <span className="text-[8pt] bg-red-400/10 text-red-400 px-2.5 py-1 rounded-full font-bold uppercase transition-all duration-300 border border-red-500/20">REQUIRED (आवश्यक)</span>
+                        )}
+                      </div>
                     </div>
 
                     <div className="bg-black/30 border border-white/5 rounded-2xl p-4 space-y-3">
-                      <p className="text-[11px] text-slate-300 leading-relaxed">
-                        स्मार्टफोन की भारी बैटरी सेविंग सेटिंग्स बैकग्राउंड सुरक्षा सेवाओं को मार देती हैं। इसके समाधान के लिए:
+                      <p className="text-[11px] text-slate-300 leading-relaxed font-semibold">
+                        स्मार्टफोन की भारी बैटरी सेविंग सेटिंग्स बैकग्राउंड सुरक्षा सेवाओं को बंद कर देती हैं। कृपया नीचे दिए गए हरे बटन को दबाकर सीधा अनुमति दें या नीचे दिए गए तरीके को अपनाएं:
                       </p>
+
+                      <button
+                        onClick={async () => {
+                          if (Capacitor.isNativePlatform()) {
+                            try {
+                              await AlarmService.requestBatteryOptimization();
+                            } catch (e) {
+                              console.error(e);
+                            }
+                          } else {
+                            alert("This feature is only available on Mobile APK.");
+                          }
+                        }}
+                        className="w-full bg-[#00FF88] text-black font-extrabold text-[11px] uppercase tracking-wider py-3.5 rounded-2xl transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer shadow-[0_4px_15px_rgba(0,255,136,0.3)] hover:brightness-110"
+                      >
+                        <Battery size={14} className="animate-bounce" />
+                        🔋 सीधे 'नो ऑप्टिमाइज़ेशन' अनुमति चालू करें (Grant Directly)
+                      </button>
+
+                      <div className="text-center text-[10px] text-slate-500 font-bold uppercase tracking-wider my-2">-- या मैन्युअल तरीका (Manual Method) --</div>
+
                       <ul className="text-[11px] text-slate-300 space-y-2 ml-1">
                         <li className="flex gap-2">
                           <span className="text-blue-400 font-bold font-mono">❶</span>
@@ -829,16 +929,9 @@ export default function App() {
                         </li>
                         <li className="flex gap-2">
                           <span className="text-blue-400 font-bold font-mono">❸</span>
-                          <span><strong>'Battery'</strong> या 'App Battery Usage' विकल्प चुनें।</span>
-                        </li>
-                        <li className="flex gap-2">
-                          <span className="text-blue-400 font-bold font-mono">❹</span>
-                          <span>इसे 'Optimized' से हटाकर <strong>'Unrestricted' / 'No Limitations'</strong> पर सेट करें!</span>
+                          <span><strong>'Battery'</strong> विकल्प में जाकर इसे <strong>'Unrestricted' / 'No Limitations'</strong> पर सेट करें!</span>
                         </li>
                       </ul>
-                      <div className="p-2.5 bg-blue-500/10 rounded-xl border border-blue-500/20 text-[10px] text-blue-300 font-bold text-center">
-                        💡 इससे आपका फ़ोन लॉक होने पर भी सुरक्षा कवच काम करना बंद नहीं करेगा!
-                      </div>
                     </div>
                   </motion.div>
                 )}
@@ -849,36 +942,52 @@ export default function App() {
                     animate={{ opacity: 1, x: 0 }}
                     className="flex flex-col gap-4"
                   >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-[#00FF88]/10 text-[#00FF88] flex items-center justify-center shrink-0">
-                        <Power size={18} />
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-[#00FF88]/10 text-[#00FF88] flex items-center justify-center shrink-0">
+                          <Power size={18} />
+                        </div>
+                        <h4 className="text-xs font-black uppercase tracking-wider text-white">
+                          चरण 2: ऑटो-स्टार्ट सक्षम करें (Enable Auto-Start)
+                        </h4>
                       </div>
-                      <h4 className="text-xs font-black uppercase tracking-wider text-white">
-                        चरण 2: ऑटो-स्टार्ट सक्षम करें (Enable Auto-Start)
-                      </h4>
                     </div>
 
                     <div className="bg-black/30 border border-white/5 rounded-2xl p-4 space-y-3">
-                      <p className="text-[11px] text-slate-300 leading-relaxed">
-                        सभी मुख्य ब्राण्ड्स पर Background Uptime बनाए रखने के लिए, ऐप को ऑटो-स्टार्ट होने की अनुमति अवश्य दें:
+                      <p className="text-[11px] text-slate-300 leading-relaxed font-semibold">
+                        सभी मुख्य मोबाइल कम्पनियों पर ऐप को बैकग्राउंड में चालू रखने के लिए नीचे वाला हरा बटन दबाकर सीधे ऑटो-स्टार्ट सक्षम कीजिए:
                       </p>
+
+                      <button
+                        onClick={async () => {
+                          if (Capacitor.isNativePlatform()) {
+                            try {
+                              await AlarmService.openAutoStartSettings();
+                            } catch (e) {
+                              console.error(e);
+                            }
+                          } else {
+                            alert("This feature is only available on Mobile APK.");
+                          }
+                        }}
+                        className="w-full bg-[#00FF88] text-black font-extrabold text-[11px] uppercase tracking-wider py-3.5 rounded-2xl transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer shadow-[0_4px_15px_rgba(0,255,136,0.3)] hover:brightness-110"
+                      >
+                        <Power size={14} className="animate-bounce" />
+                        🔄 सीधे 'ऑटो-स्टार्ट' सेटिंग खोलें (Open Auto-Start Directly)
+                      </button>
+
+                      <div className="text-center text-[10px] text-slate-500 font-bold uppercase tracking-wider my-2">-- या मैन्युअल तरीका (Manual Method) --</div>
+
                       <ul className="text-[11px] text-slate-300 space-y-2 ml-1">
                         <li className="flex gap-2">
                           <span className="text-[#00FF88] font-bold font-mono">❶</span>
-                          <span>फ़ोन की Settings या ऐप की <strong>'App Info'</strong> स्क्रीन पर जाएं।</span>
+                          <span>Settings या <strong>App Info</strong> स्क्रीन पर जाएं।</span>
                         </li>
                         <li className="flex gap-2">
                           <span className="text-[#00FF88] font-bold font-mono">❷</span>
-                          <span><strong>'Auto-start'</strong> या 'Allow Background Activity' को ढूंढें।</span>
-                        </li>
-                        <li className="flex gap-2">
-                          <span className="text-[#00FF88] font-bold font-mono">❸</span>
-                          <span>इस टॉगल को स्विच करके <strong>'सक्षम' / 'ON'</strong> करें।</span>
+                          <span><strong>'Auto-start'</strong> या 'Allow Background Activity' को चालू (ON) करें।</span>
                         </li>
                       </ul>
-                      <div className="p-2 bg-emerald-500/10 rounded-xl border border-emerald-500/20 text-[10px] text-emerald-400 font-bold text-center">
-                        Oppo, Vivo, Xiaomi, Realme, Poco, Vivo फ़ोन्स पर यह अनिवार्य कदम है!
-                      </div>
                     </div>
                   </motion.div>
                 )}
@@ -889,35 +998,57 @@ export default function App() {
                     animate={{ opacity: 1, x: 0 }}
                     className="flex flex-col gap-4"
                   >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0">
-                        <Lock size={18} />
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0">
+                          <Lock size={18} />
+                        </div>
+                        <h4 className="text-xs font-black uppercase tracking-wider text-white">
+                          चरण 3: लॉक-स्क्रीन पर दिखाएं (Show on Lock-Screen)
+                        </h4>
                       </div>
-                      <h4 className="text-xs font-black uppercase tracking-wider text-white">
-                        चरण 3: लॉक-स्क्रीन पर दिखाएं (Show on Lock-Screen)
-                      </h4>
+                      <div>
+                        {nativePermissions.overlayAllowed ? (
+                          <span className="text-[8pt] bg-emerald-500/10 text-[#00FF88] px-2.5 py-1 rounded-full font-bold uppercase transition-all duration-300 border border-emerald-500/20">ACTIVE (सक्रिय)</span>
+                        ) : (
+                          <span className="text-[8pt] bg-red-400/10 text-red-400 px-2.5 py-1 rounded-full font-bold uppercase transition-all duration-300 border border-red-500/20">REQUIRED (आवश्यक)</span>
+                        )}
+                      </div>
                     </div>
 
                     <div className="bg-black/30 border border-white/5 rounded-2xl p-4 space-y-3">
-                      <p className="text-[11px] text-slate-300 leading-relaxed">
-                        यह सुनिश्चित करता है कि जैसे ही कोई बिना आज्ञा फ़ोन अनप्लग करे, अलार्म स्क्रीन लॉक-स्क्रीन पर भी सबसे ऊपर बजती हुई सामने आ जाए:
+                      <p className="text-[11px] text-slate-300 leading-relaxed font-semibold">
+                        यह सुनिश्चित करता है कि फ़ोन लॉक होने पर भी सुरक्षा कवच अलार्म स्क्रीन लॉक-स्क्रीन के ऊपर सबसे पहले बजती हुई दिखे। इसे चालू करने के लिए हरा बटन दबाएं:
                       </p>
+
+                      <button
+                        onClick={async () => {
+                          if (Capacitor.isNativePlatform()) {
+                            try {
+                              await AlarmService.openOverlaySettings();
+                            } catch (e) {
+                              console.error(e);
+                            }
+                          } else {
+                            alert("This feature is only available on Mobile APK.");
+                          }
+                        }}
+                        className="w-full bg-[#00FF88] text-black font-extrabold text-[11px] uppercase tracking-wider py-3.5 rounded-2xl transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer shadow-[0_4px_15px_rgba(0,255,136,0.3)] hover:brightness-110"
+                      >
+                        <Lock size={14} className="animate-bounce" />
+                        📺 सीधे 'लॉक-स्क्रीन डिस्प्ले / अन्य ऐप पर दिखाएं' चालू करें
+                      </button>
+
+                      <div className="text-center text-[10px] text-slate-500 font-bold uppercase tracking-wider my-2">-- या मैन्युअल तरीका (Manual Method) --</div>
+
                       <ul className="text-[11px] text-slate-300 space-y-2 ml-1">
                         <li className="flex gap-2">
                           <span className="text-amber-500 font-bold font-mono">❶</span>
-                          <span><strong>'App Info'</strong> स्क्रीन पर नीचे स्क्रॉल करें।</span>
+                          <span><strong>App Info</strong> में जाकर <strong>'Other Permissions'</strong> को खोलें।</span>
                         </li>
                         <li className="flex gap-2">
                           <span className="text-amber-500 font-bold font-mono">❷</span>
-                          <span><strong>'Other Permissions'</strong> (अन्य अनुमतियाँ) विकल्प को खोलें।</span>
-                        </li>
-                        <li className="flex gap-2">
-                          <span className="text-amber-500 font-bold font-mono">❸</span>
-                          <span><strong>'Show on Lock-screen'</strong> (लॉक-स्क्रीन पर दिखाएं) विकल्प को सक्षम करें।</span>
-                        </li>
-                        <li className="flex gap-2">
-                          <span className="text-amber-500 font-bold font-mono">❹</span>
-                          <span><strong>'Display over other apps'</strong> को भी अवश्य अनुमति दें।</span>
+                          <span><strong>'Show on Lock-screen'</strong> व <strong>'Display over other apps'</strong> को अनुमति दें।</span>
                         </li>
                       </ul>
                     </div>
@@ -1113,7 +1244,7 @@ function SplashScreen({ t }: any) {
       <div className="text-center">
         <h1 className="text-4xl font-black tracking-tighter text-white uppercase italic">{t.appName}<span className="text-[#00FF88]">.</span></h1>
         {/* sync_v1.0.26 */}
-        <p className="text-slate-500 text-[10px] tracking-[0.4em] font-bold mt-2 uppercase">{t.coreSystem} v1.0.28</p>
+        <p className="text-slate-500 text-[10px] tracking-[0.4em] font-bold mt-2 uppercase">{t.coreSystem} v1.0.31</p>
       </div>
     </motion.div>
   );
@@ -1354,7 +1485,7 @@ function HomeScreen({
 
       <footer className="mt-8 flex justify-between items-center text-slate-500 text-[10px] font-bold uppercase tracking-widest">
         <span>{t.mode}: <span className="text-accent">Auto</span></span>
-        <span className="flex items-center gap-2 italic text-slate-600">v1.0.28-{t.stable}</span>
+        <span className="flex items-center gap-2 italic text-slate-600">v1.0.31-{t.stable}</span>
       </footer>
     </motion.div>
   );

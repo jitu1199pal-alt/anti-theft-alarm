@@ -63,6 +63,7 @@ public class AlarmService extends Service {
         } catch (Exception e) {
             e.printStackTrace();
         }
+        AlarmServicePlugin.setServiceRunning(true);
     }
 
     @Override
@@ -334,6 +335,7 @@ public class AlarmService extends Service {
                 e.printStackTrace();
             }
         }
+        AlarmServicePlugin.setServiceRunning(false);
         super.onDestroy();
     }
 

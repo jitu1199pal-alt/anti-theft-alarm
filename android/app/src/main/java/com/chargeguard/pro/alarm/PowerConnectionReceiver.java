@@ -1,0 +1,40 @@
+package com.chargeguard.pro.alarm;
+
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.os.Build;
+
+public class PowerConnectionReceiver extends BroadcastReceiver {
+    @Override
+    public void onReceive(Context context, Intent intent) {
+        String action = intent.getAction();
+        if (Intent.ACTION_POWER_CONNECTED.equals(action)) {
+            SharedPreferences prefs = context.getSharedPreferences("ChargeGuardPrefs", Context.MODE_PRIVATE);
+            
+            // Set active monitoring state to true of the background guard
+            prefs.edit().putBoolean("isMonitoringActive", true).apply();
+            
+            boolean theftAlarm = prefs.getBoolean("theftAlarm", true);
+            int targetPercentage = prefs.getInt("targetPercentage", 80);
+            int lowBatteryPercentage = prefs.getInt("lowBatteryPercentage", 20);
+
+            Intent serviceIntent = new Intent(context, AlarmService.class);
+            serviceIntent.putExtra("theftAlarm", theftAlarm);
+            serviceIntent.putExtra("targetPercentage", targetPercentage);
+            serviceIntent.putExtra("lowBatteryPercentage", lowBatteryPercentage);
+
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(serviceIntent);
+                } else {
+                    context.startService(serviceIntent);
+                }
+                AlarmServicePlugin.setServiceRunning(true);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+}
