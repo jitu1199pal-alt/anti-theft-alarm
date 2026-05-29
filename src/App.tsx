@@ -91,6 +91,7 @@ export default function App() {
     }
   }); 
   const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
   const [showTempWarning, setShowTempWarning] = useState(false);
   const [targetReachedAlerted, setTargetReachedAlerted] = useState(false);
   const [alarmReason, setAlarmReason] = useState<'theft' | 'full' | 'low' | 'test' | null>(null);
@@ -310,10 +311,11 @@ export default function App() {
       }
     };
 
-    restoreNativelyPersistedState().then(() => {
+    restoreNativelyPersistedState().then(async () => {
       checkNotificationPermission();
       fetchNativePermissions();
-      syncNativeServiceState();
+      await syncNativeServiceState();
+      setIsInitialized(true);
     });
 
     const handleFocus = () => {
@@ -365,8 +367,12 @@ export default function App() {
         return prev;
       });
       setIsMonitoring(true);
+      setAudioUnlocked(true);
+      if (mainAudioContext) {
+        mainAudioContext.resume().catch(() => {});
+      }
     }
-  }, [battery.charging]);
+  }, [battery.charging, mainAudioContext]);
 
   // Basic Auth setup
   useEffect(() => {
@@ -609,6 +615,8 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('isMonitoring', JSON.stringify(isMonitoring));
     
+    if (!isInitialized) return; // Prevent overwriting background running service on boot up before state is resolved
+    
     const syncNativeService = async () => {
       if (Capacitor.isNativePlatform()) {
         try {
@@ -629,7 +637,7 @@ export default function App() {
       }
     };
     syncNativeService();
-  }, [isMonitoring, securityConfig.theftAlarm, alarmConfig.targetPercentage, alarmConfig.lowBatteryPercentage, alarmConfig.vibrate]);
+  }, [isMonitoring, isInitialized, securityConfig.theftAlarm, alarmConfig.targetPercentage, alarmConfig.lowBatteryPercentage, alarmConfig.vibrate]);
 
   // Refresh Native Service if alarm is disarmed/dismissed but monitoring is kept active
   useEffect(() => {
@@ -1893,7 +1901,7 @@ function HomeScreen({
               }}
               className="flex-1 min-h-[80px] bg-black text-white rounded-[1.8rem] flex items-center justify-center gap-4 relative overflow-hidden group transition-all active:scale-95"
             >
-              {audioUnlocked && isMonitoring ? (
+              {isMonitoring ? (
                 <>
                   <motion.div 
                     animate={{ opacity: [0.05, 0.15, 0.05] }}
