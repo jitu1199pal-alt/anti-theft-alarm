@@ -306,7 +306,11 @@ public class AlarmService extends Service {
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .build();
 
-        startForeground(NOTIFICATION_ID, notification);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(NOTIFICATION_ID, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+        } else {
+            startForeground(NOTIFICATION_ID, notification);
+        }
     }
 
     private void showAlarmNotification(String title, String desc) {
@@ -319,7 +323,7 @@ public class AlarmService extends Service {
                 0,
                 notificationIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-        );
+            );
 
         Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle(title)
@@ -333,7 +337,11 @@ public class AlarmService extends Service {
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
                 .build();
 
-        startForeground(NOTIFICATION_ID, notification);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(NOTIFICATION_ID, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+        } else {
+            startForeground(NOTIFICATION_ID, notification);
+        }
     }
 
     @Override
@@ -367,12 +375,22 @@ public class AlarmService extends Service {
             restartServiceIntent.putExtra("lowBatteryPercentage", lowBatteryPercentage);
             restartServiceIntent.putExtra("vibrate", vibrateEnabled);
 
-            PendingIntent restartServicePendingIntent = PendingIntent.getService(
-                getApplicationContext(), 
-                1001, 
-                restartServiceIntent, 
-                PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_IMMUTABLE
-            );
+            PendingIntent restartServicePendingIntent;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                restartServicePendingIntent = PendingIntent.getForegroundService(
+                    getApplicationContext(), 
+                    1001, 
+                    restartServiceIntent, 
+                    PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_IMMUTABLE
+                );
+            } else {
+                restartServicePendingIntent = PendingIntent.getService(
+                    getApplicationContext(), 
+                    1001, 
+                    restartServiceIntent, 
+                    PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_IMMUTABLE
+                );
+            }
             AlarmManager alarmManager = (AlarmManager) getApplicationContext().getSystemService(Context.ALARM_SERVICE);
             if (alarmManager != null) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
