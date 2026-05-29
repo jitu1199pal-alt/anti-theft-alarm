@@ -829,18 +829,36 @@ export default function App() {
       case Screen.HISTORY: return <HistoryScreen logs={chargingLogs} setLogs={setChargingLogs} chargingCycles={chargingCycles} onBack={() => setScreen(Screen.HOME)} t={t} />;
       case Screen.HEALTH: return <HealthScreen battery={battery} batteryCapacity={alarmConfig.batteryCapacity || 5000} chargingCycles={chargingCycles} onBack={() => setScreen(Screen.HOME)} t={t} />;
       case Screen.LOCK: return <AlarmOverlay battery={battery} config={alarmConfig} security={securityConfig} audioContext={mainAudioContext} reason={alarmReason} onStop={async (disarm) => { 
-      if (disarm) setIsMonitoring(false); 
       setTargetReachedAlerted(true);
       setAlarmReason(null);
-      setScreen(Screen.HOME); 
-      if (Capacitor.isNativePlatform()) {
-        try {
-          await AlarmService.minimizeApp();
-        } catch (e) {
-          console.error("Error minimizing app on stop:", e);
+      if (disarm) {
+        setScreen(Screen.ADS);
+      } else {
+        setScreen(Screen.HOME);
+        if (Capacitor.isNativePlatform()) {
+          try {
+            await AlarmService.minimizeApp();
+          } catch (e) {
+            console.error("Error minimizing app on stop:", e);
+          }
         }
       }
     }} t={t} />;
+      case Screen.ADS: return (
+        <GoogleAdScreen 
+          onClose={async () => {
+            setScreen(Screen.HOME);
+            if (Capacitor.isNativePlatform()) {
+              try {
+                await AlarmService.minimizeApp();
+              } catch (e) {
+                console.error("Error minimizing app on ad close:", e);
+              }
+            }
+          }} 
+          t={t} 
+        />
+      );
     default: return <HomeScreen battery={battery} config={alarmConfig} setConfig={setAlarmConfig} isMonitoring={isMonitoring} setMonitoring={setIsMonitoring} setScreen={setScreen} nativePermissions={nativePermissions} hasOtherPermissionsConfirmed={hasOtherPermissionsConfirmed} setHasOtherPermissionsConfirmed={setHasOtherPermissionsConfirmed} onTest={() => { setAlarmReason('test'); setScreen(Screen.LOCK); }} t={t} />;
   }
 };
@@ -1443,7 +1461,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Navigation Bar (Mobile Style) */}
-      {screen !== Screen.SPLASH && screen !== Screen.LOCK && (
+      {screen !== Screen.SPLASH && screen !== Screen.LOCK && screen !== Screen.ADS && (
         <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] h-20 neo-blur border-t border-white/5 flex items-center justify-around px-4 pb-4 z-50">
           <NavButton active={screen === Screen.HOME} icon={Battery} onClick={() => setScreen(Screen.HOME)} />
           <NavButton active={screen === Screen.HISTORY} icon={History} onClick={() => setScreen(Screen.HISTORY)} />
@@ -1503,6 +1521,126 @@ function NavButton({ icon: Icon, active, onClick }: { icon: any, active: boolean
       <Icon size={24} />
       {active && <div className="w-1 h-1 bg-black rounded-full" />}
     </button>
+  );
+}
+
+function GoogleAdScreen({ onClose, t }: { onClose: () => void, t: any }) {
+  const [secondsLeft, setSecondsLeft] = useState(15);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setSecondsLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          onClose();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [onClose]);
+
+  return (
+    <div className="absolute inset-0 bg-slate-950 z-[200] flex flex-col justify-between p-6 select-none text-white font-sans">
+      {/* Ad Header */}
+      <div className="flex items-center justify-between mt-4">
+        <div className="flex items-center gap-1.5 bg-slate-900 px-3 py-1.5 rounded-full border border-slate-800">
+          <div className="w-1.5 h-1.5 bg-yellow-500 rounded-full animate-pulse" />
+          <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400">Ad</span>
+          <span className="text-[9px] text-slate-500">•</span>
+          <span className="text-[9px] text-slate-400 font-bold">Google AdSense</span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* AdChoices Badge */}
+          <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 px-2 py-1 rounded-full text-[9px] text-slate-500">
+            <span className="font-bold">AdChoices</span>
+            <span className="w-2.5 h-2.5 bg-blue-500 rounded-full flex items-center justify-center text-[8px] text-white font-serif">i</span>
+          </div>
+
+          <div className="bg-white/10 px-3 py-1.5 rounded-full text-[10px] font-black uppercase text-accent tracking-widest border border-white/5 shadow-sm">
+            Closing in {secondsLeft}s
+          </div>
+        </div>
+      </div>
+
+      {/* Ad Body / Canvas Creative */}
+      <div className="flex-1 flex flex-col items-center justify-center my-6 space-y-6">
+        <div className="w-full max-w-[340px] bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 rounded-[2.5rem] p-6 shadow-2xl relative overflow-hidden flex flex-col justify-between h-[420px]">
+          {/* Accent decoration */}
+          <div className="absolute -top-16 -right-16 w-32 h-32 bg-accent/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-16 -left-16 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+
+          {/* Ad Label */}
+          <div className="text-center space-y-1 z-10">
+            <span className="text-[9px] uppercase tracking-[0.25em] font-black text-accent">Feature Showcase</span>
+            <h2 className="text-2xl font-black italic uppercase tracking-tight text-white leading-tight">
+              ChargeGuard Pro <span className="text-accent">Premium</span>
+            </h2>
+            <p className="text-[10px] text-slate-400 font-medium">Ultimate Theft Protection & Siren Toolkit</p>
+          </div>
+
+          {/* Core Visual */}
+          <div className="flex flex-col items-center justify-center my-4 space-y-3 z-10">
+            <div className="relative">
+              <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-accent to-blue-500 blur-md opacity-40 animate-pulse" />
+              <div className="w-16 h-16 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-accent shadow-inner relative z-10">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-accent animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+              </div>
+            </div>
+
+            <div className="text-center space-y-1">
+              <div className="bg-slate-950 border border-slate-800/80 px-3 py-1 rounded-full inline-block">
+                <span className="text-[10px] font-black uppercase text-emerald-400 tracking-wider">★ Live Ad Broadcast ★</span>
+              </div>
+              <p className="text-xs text-slate-300 font-semibold px-4 pt-1">
+                "Keep your smartphone 100% safe with 24/7 Background Radar scanning."
+              </p>
+            </div>
+          </div>
+
+          {/* Ad Reviews / Stats */}
+          <div className="flex items-center justify-center gap-6 text-center border-t border-b border-white/[0.04] py-3 z-10 bg-white/[0.01]">
+            <div>
+              <p className="text-xs font-black text-white">4.9 ★★★★★</p>
+              <p className="text-[8px] uppercase tracking-wider text-slate-500 font-bold">App Store Rating</p>
+            </div>
+            <div className="w-[1px] h-6 bg-slate-800" />
+            <div>
+              <p className="text-xs font-black text-white">2.5M+</p>
+              <p className="text-[8px] uppercase tracking-wider text-slate-500 font-bold">Secured Devices</p>
+            </div>
+          </div>
+
+          {/* Ad Call-to-action button */}
+          <button className="w-full bg-accent hover:bg-emphasis text-black font-black uppercase tracking-widest py-3 rounded-full text-xs shadow-lg shadow-accent/25 transition-transform duration-200 active:scale-95 z-10 flex items-center justify-center gap-1.5">
+            <span>Unlock Pro Access</span>
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Ad Footer / Loader Bar */}
+      <div className="w-full flex flex-col items-center space-y-3 pb-4">
+        {/* Ad Progress Bar */}
+        <div className="w-full max-w-[340px] h-1.5 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
+          <div 
+            className="h-full bg-gradient-to-r from-accent to-emerald-400 transition-all duration-1000 ease-linear rounded-full"
+            style={{ width: `${((15 - secondsLeft) / 15) * 100}%` }}
+          />
+        </div>
+        <div className="flex items-center justify-between w-full max-w-[340px] px-1">
+          <p className="text-[9px] text-slate-600 uppercase tracking-widest font-bold">Ad via Google AdSense</p>
+          <p className="text-[9px] text-slate-500 font-medium">Please wait for {secondsLeft}s before returning</p>
+        </div>
+      </div>
+    </div>
   );
 }
 

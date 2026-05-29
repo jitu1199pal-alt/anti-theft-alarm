@@ -15,7 +15,8 @@ export enum Screen {
   HISTORY = 'history',
   HEALTH = 'health',
   THEMES = 'themes',
-  LOCK = 'lock'
+  LOCK = 'lock',
+  ADS = 'ads'
 }
 
 export type Theme = 'dark' | 'light' | 'neon';
