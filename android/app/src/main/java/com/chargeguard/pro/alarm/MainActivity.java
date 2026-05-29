@@ -24,7 +24,7 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
-    protected void onResume() {
+    public void onResume() {
         super.onResume();
         // Dynamically re-apply screens and lock flags to show the alarm screen above lock screens in real-time
         boolean isAlarming = AlarmServicePlugin.activeAlarmTriggered;
