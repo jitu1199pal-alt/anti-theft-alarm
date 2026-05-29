@@ -31,6 +31,7 @@ public class AlarmService extends Service {
     private boolean theftAlarmEnabled = false;
     private int targetPercentage = 80;
     private int lowBatteryPercentage = 20;
+    private boolean vibrateEnabled = true;
     
     private boolean isAlarmActive = false;
     private String alarmReason = null;
@@ -80,6 +81,7 @@ public class AlarmService extends Service {
             theftAlarmEnabled = intent.getBooleanExtra("theftAlarm", false);
             targetPercentage = intent.getIntExtra("targetPercentage", 80);
             lowBatteryPercentage = intent.getIntExtra("lowBatteryPercentage", 20);
+            vibrateEnabled = intent.getBooleanExtra("vibrate", true);
         }
 
         isFirstCheck = true;
@@ -95,6 +97,7 @@ public class AlarmService extends Service {
                  .putBoolean("theftAlarm", theftAlarmEnabled)
                  .putInt("targetPercentage", targetPercentage)
                  .putInt("lowBatteryPercentage", lowBatteryPercentage)
+                 .putBoolean("vibrate", vibrateEnabled)
                  .apply();
         } catch (Exception e) {
             e.printStackTrace();
@@ -238,6 +241,17 @@ public class AlarmService extends Service {
     private void startVibrations() {
         if (vibrator == null) return;
         try {
+            SharedPreferences prefs = getSharedPreferences("ChargeGuardPrefs", Context.MODE_PRIVATE);
+            vibrateEnabled = prefs.getBoolean("vibrate", true);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        if (!vibrateEnabled) {
+            return;
+        }
+
+        try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 vibrator.vibrate(VibrationEffect.createWaveform(new long[]{0, 500, 200, 500}, 0));
             } else {
@@ -351,6 +365,7 @@ public class AlarmService extends Service {
             restartServiceIntent.putExtra("theftAlarm", theftAlarmEnabled);
             restartServiceIntent.putExtra("targetPercentage", targetPercentage);
             restartServiceIntent.putExtra("lowBatteryPercentage", lowBatteryPercentage);
+            restartServiceIntent.putExtra("vibrate", vibrateEnabled);
 
             PendingIntent restartServicePendingIntent = PendingIntent.getService(
                 getApplicationContext(), 

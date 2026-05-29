@@ -19,11 +19,13 @@ public class PowerConnectionReceiver extends BroadcastReceiver {
             boolean theftAlarm = prefs.getBoolean("theftAlarm", true);
             int targetPercentage = prefs.getInt("targetPercentage", 80);
             int lowBatteryPercentage = prefs.getInt("lowBatteryPercentage", 20);
+            boolean vibrate = prefs.getBoolean("vibrate", true);
 
             Intent serviceIntent = new Intent(context, AlarmService.class);
             serviceIntent.putExtra("theftAlarm", theftAlarm);
             serviceIntent.putExtra("targetPercentage", targetPercentage);
             serviceIntent.putExtra("lowBatteryPercentage", lowBatteryPercentage);
+            serviceIntent.putExtra("vibrate", vibrate);
 
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

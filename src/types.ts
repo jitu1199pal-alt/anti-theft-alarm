@@ -41,6 +41,7 @@ export interface AlarmConfig {
   alarmColor?: string;
   tempWarningLevel: number;
   batteryCapacity?: number;
+  vibrate: boolean;
 }
 
 export interface SecurityConfig {

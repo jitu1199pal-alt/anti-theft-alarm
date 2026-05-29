@@ -18,10 +18,12 @@ public class BootReceiver extends BroadcastReceiver {
                 boolean theftAlarm = prefs.getBoolean("theftAlarm", false);
                 int targetPercentage = prefs.getInt("targetPercentage", 80);
                 int lowBatteryPercentage = prefs.getInt("lowBatteryPercentage", 20);
+                boolean vibrate = prefs.getBoolean("vibrate", true);
 
                 serviceIntent.putExtra("theftAlarm", theftAlarm);
                 serviceIntent.putExtra("targetPercentage", targetPercentage);
                 serviceIntent.putExtra("lowBatteryPercentage", lowBatteryPercentage);
+                serviceIntent.putExtra("vibrate", vibrate);
 
                 try {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

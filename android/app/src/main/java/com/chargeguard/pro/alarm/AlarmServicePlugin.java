@@ -58,11 +58,13 @@ public class AlarmServicePlugin extends Plugin {
         boolean theftAlarm = call.getBoolean("theftAlarm", false);
         int targetPercentage = call.getInt("targetPercentage", 80);
         int lowBatteryPercentage = call.getInt("lowBatteryPercentage", 20);
+        boolean vibrate = call.getBoolean("vibrate", true);
 
         Intent serviceIntent = new Intent(context, AlarmService.class);
         serviceIntent.putExtra("theftAlarm", theftAlarm);
         serviceIntent.putExtra("targetPercentage", targetPercentage);
         serviceIntent.putExtra("lowBatteryPercentage", lowBatteryPercentage);
+        serviceIntent.putExtra("vibrate", vibrate);
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -114,6 +116,7 @@ public class AlarmServicePlugin extends Plugin {
         boolean theftAlarm = call.getBoolean("theftAlarm", true);
         int targetPercentage = call.getInt("targetPercentage", 80);
         int lowBatteryPercentage = call.getInt("lowBatteryPercentage", 20);
+        boolean vibrate = call.getBoolean("vibrate", true);
 
         try {
             android.content.SharedPreferences prefs = context.getSharedPreferences("ChargeGuardPrefs", Context.MODE_PRIVATE);
@@ -121,6 +124,7 @@ public class AlarmServicePlugin extends Plugin {
                  .putBoolean("theftAlarm", theftAlarm)
                  .putInt("targetPercentage", targetPercentage)
                  .putInt("lowBatteryPercentage", lowBatteryPercentage)
+                 .putBoolean("vibrate", vibrate)
                  .apply();
 
             JSObject result = new JSObject();
