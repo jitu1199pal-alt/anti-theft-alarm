@@ -143,9 +143,6 @@ export default function App() {
       setChargingCycles(prev => {
         const next = prev + 1;
         localStorage.setItem('chargingCycles', String(next));
-        if (Capacitor.isNativePlatform()) {
-          AlarmService.savePersistedValue({ key: 'chargingCycles', value: String(next) }).catch(() => {});
-        }
         return next;
       });
 
@@ -161,9 +158,6 @@ export default function App() {
       };
       setActiveSession(sess);
       localStorage.setItem('activeChargingSession', JSON.stringify(sess));
-      if (Capacitor.isNativePlatform()) {
-        AlarmService.savePersistedValue({ key: 'activeChargingSession', value: JSON.stringify(sess) }).catch(() => {});
-      }
     }
     else if (!isCharging && wasChg) {
       // Unplugged
@@ -181,17 +175,11 @@ export default function App() {
           setChargingLogs(prev => {
             const next = [newLog, ...prev.filter(l => l.id !== newLog.id)];
             localStorage.setItem('chargingHistory', JSON.stringify(next));
-            if (Capacitor.isNativePlatform()) {
-              AlarmService.savePersistedValue({ key: 'chargingHistory', value: JSON.stringify(next) }).catch(() => {});
-            }
             return next;
           });
         }
         setActiveSession(null);
         localStorage.removeItem('activeChargingSession');
-        if (Capacitor.isNativePlatform()) {
-          AlarmService.savePersistedValue({ key: 'activeChargingSession', value: '' }).catch(() => {});
-        }
       }
     }
 
@@ -296,16 +284,6 @@ export default function App() {
     const restoreNativelyPersistedState = async () => {
       if (Capacitor.isNativePlatform()) {
         try {
-          const cyclesData = await AlarmService.getPersistedValue({ key: 'chargingCycles' });
-          if (cyclesData && cyclesData.value) {
-            setChargingCycles(parseInt(cyclesData.value));
-            localStorage.setItem('chargingCycles', cyclesData.value);
-          }
-          const historyData = await AlarmService.getPersistedValue({ key: 'chargingHistory' });
-          if (historyData && historyData.value) {
-            setChargingLogs(JSON.parse(historyData.value));
-            localStorage.setItem('chargingHistory', historyData.value);
-          }
           const securityData = await AlarmService.getPersistedValue({ key: 'securityConfig' });
           if (securityData && securityData.value) {
             setSecurityConfig(JSON.parse(securityData.value));
@@ -2496,9 +2474,6 @@ function HistoryScreen({ logs, setLogs, chargingCycles, onBack, t }: any) {
     if (window.confirm("Do you want to reset all charging sessions history? / क्या आप चार्जिंग इतिहास मिटाना चाहते हैं?")) {
       setLogs([]);
       localStorage.setItem('chargingHistory', JSON.stringify([]));
-      if (Capacitor.isNativePlatform()) {
-        AlarmService.savePersistedValue({ key: 'chargingHistory', value: JSON.stringify([]) }).catch(() => {});
-      }
     }
   };
 

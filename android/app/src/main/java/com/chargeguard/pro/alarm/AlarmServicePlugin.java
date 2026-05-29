@@ -122,11 +122,7 @@ public class AlarmServicePlugin extends Plugin {
     public void minimizeApp(PluginCall call) {
         try {
             if (getActivity() != null) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    getActivity().finishAndRemoveTask();
-                } else {
-                    getActivity().finish();
-                }
+                getActivity().moveTaskToBack(true);
             }
             JSObject result = new JSObject();
             result.put("success", true);
