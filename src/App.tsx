@@ -355,10 +355,15 @@ export default function App() {
     syncNativeServiceState();
   }, [battery.charging]);
 
-  // Automatically arm active alarm set to 95% when a charger plug-in context is caught in the foreground
+  // Automatically arm active alarm set to 95% and start monitoring immediately when charger is plugged in (same as clicking "Set Alarm" manually)
   useEffect(() => {
-    if (battery.charging && !isMonitoring) {
-      setAlarmConfig(prev => ({ ...prev, targetPercentage: 95 }));
+    if (battery.charging) {
+      setAlarmConfig(prev => {
+        if (prev.targetPercentage !== 95) {
+          return { ...prev, targetPercentage: 95 };
+        }
+        return prev;
+      });
       setIsMonitoring(true);
     }
   }, [battery.charging]);
@@ -714,13 +719,6 @@ export default function App() {
       setShowTempWarning(false);
     }
   }, [battery.temperature, alarmConfig.tempWarningLevel]);
-
-  // Automatically arm alarm (enable monitoring) when charger is plugged in
-  useEffect(() => {
-    if (battery.charging) {
-      setIsMonitoring(true);
-    }
-  }, [battery.charging]);
 
   // Handle Splash Screen
   useEffect(() => {

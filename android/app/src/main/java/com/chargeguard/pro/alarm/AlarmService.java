@@ -69,19 +69,32 @@ public class AlarmService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        SharedPreferences prefs = getSharedPreferences("ChargeGuardPrefs", Context.MODE_PRIVATE);
+        theftAlarmEnabled = prefs.getBoolean("theftAlarm", true);
+        targetPercentage = prefs.getInt("targetPercentage", 95);
+        lowBatteryPercentage = prefs.getInt("lowBatteryPercentage", 20);
+        vibrateEnabled = prefs.getBoolean("vibrate", true);
+
         if (intent != null) {
             String action = intent.getAction();
             if ("STOP_SERVICE".equals(action)) {
-                SharedPreferences prefs = getSharedPreferences("ChargeGuardPrefs", Context.MODE_PRIVATE);
                 prefs.edit().putBoolean("isMonitoringActive", false).apply();
                 stopSelf();
                 return START_NOT_STICKY;
             }
 
-            theftAlarmEnabled = intent.getBooleanExtra("theftAlarm", false);
-            targetPercentage = intent.getIntExtra("targetPercentage", 80);
-            lowBatteryPercentage = intent.getIntExtra("lowBatteryPercentage", 20);
-            vibrateEnabled = intent.getBooleanExtra("vibrate", true);
+            if (intent.hasExtra("theftAlarm")) {
+                theftAlarmEnabled = intent.getBooleanExtra("theftAlarm", theftAlarmEnabled);
+            }
+            if (intent.hasExtra("targetPercentage")) {
+                targetPercentage = intent.getIntExtra("targetPercentage", targetPercentage);
+            }
+            if (intent.hasExtra("lowBatteryPercentage")) {
+                lowBatteryPercentage = intent.getIntExtra("lowBatteryPercentage", lowBatteryPercentage);
+            }
+            if (intent.hasExtra("vibrate")) {
+                vibrateEnabled = intent.getBooleanExtra("vibrate", vibrateEnabled);
+            }
         }
 
         isFirstCheck = true;
@@ -91,7 +104,6 @@ public class AlarmService extends Service {
 
         // Save active monitoring state in SharedPreferences for reboot recovery
         try {
-            SharedPreferences prefs = getSharedPreferences("ChargeGuardPrefs", Context.MODE_PRIVATE);
             prefs.edit()
                  .putBoolean("isMonitoringActive", true)
                  .putBoolean("theftAlarm", theftAlarmEnabled)
