@@ -45,9 +45,13 @@ interface AlarmServicePluginType {
   openAppInfo(): Promise<{ success: boolean }>;
   openOverlaySettings(): Promise<{ success: boolean }>;
   openAutoStartSettings(): Promise<{ success: boolean }>;
+  openOtherPermissionsSettings(): Promise<{ success: boolean }>;
   openNotificationSettings(): Promise<{ success: boolean }>;
   getBatteryCapacity(): Promise<{ capacity: number }>;
   getPermissionsState(): Promise<{ batteryIgnored: boolean; overlayAllowed: boolean; notificationsEnabled?: boolean }>;
+  minimizeApp(): Promise<{ success: boolean }>;
+  savePersistedValue(options: { key: string; value: string }): Promise<{ success: boolean }>;
+  getPersistedValue(options: { key: string }): Promise<{ value: string | null }>;
   saveConfig(options: {
     theftAlarm: boolean;
     targetPercentage: number;
@@ -139,6 +143,9 @@ export default function App() {
       setChargingCycles(prev => {
         const next = prev + 1;
         localStorage.setItem('chargingCycles', String(next));
+        if (Capacitor.isNativePlatform()) {
+          AlarmService.savePersistedValue({ key: 'chargingCycles', value: String(next) }).catch(() => {});
+        }
         return next;
       });
 
@@ -154,6 +161,9 @@ export default function App() {
       };
       setActiveSession(sess);
       localStorage.setItem('activeChargingSession', JSON.stringify(sess));
+      if (Capacitor.isNativePlatform()) {
+        AlarmService.savePersistedValue({ key: 'activeChargingSession', value: JSON.stringify(sess) }).catch(() => {});
+      }
     }
     else if (!isCharging && wasChg) {
       // Unplugged
@@ -171,11 +181,17 @@ export default function App() {
           setChargingLogs(prev => {
             const next = [newLog, ...prev.filter(l => l.id !== newLog.id)];
             localStorage.setItem('chargingHistory', JSON.stringify(next));
+            if (Capacitor.isNativePlatform()) {
+              AlarmService.savePersistedValue({ key: 'chargingHistory', value: JSON.stringify(next) }).catch(() => {});
+            }
             return next;
           });
         }
         setActiveSession(null);
         localStorage.removeItem('activeChargingSession');
+        if (Capacitor.isNativePlatform()) {
+          AlarmService.savePersistedValue({ key: 'activeChargingSession', value: '' }).catch(() => {});
+        }
       }
     }
 
@@ -188,6 +204,13 @@ export default function App() {
   const [hasAutoStartConfirmed, setHasAutoStartConfirmed] = useState(() => {
     try {
       return localStorage.getItem('hasAutoStartConfirmed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [hasOtherPermissionsConfirmed, setHasOtherPermissionsConfirmed] = useState(() => {
+    try {
+      return localStorage.getItem('hasOtherPermissionsConfirmed') === 'true';
     } catch {
       return false;
     }
@@ -248,9 +271,17 @@ export default function App() {
     const syncNativeServiceState = async () => {
       if (Capacitor.isNativePlatform()) {
         try {
-          const state = await AlarmService.getServiceState();
+          const state = await AlarmService.getServiceState() as any;
           if (state.running) {
             setIsMonitoring(true);
+            if (state.targetPercentage) {
+              setAlarmConfig(prev => ({
+                ...prev,
+                targetPercentage: state.targetPercentage,
+                lowBatteryPercentage: state.lowBatteryPercentage ?? prev.lowBatteryPercentage,
+                vibrate: state.vibrate ?? prev.vibrate
+              }));
+            }
             if (state.isAlarming && state.alarmReason) {
               setAlarmReason(state.alarmReason as any);
               setScreen(Screen.LOCK);
@@ -262,9 +293,50 @@ export default function App() {
       }
     };
 
-    checkNotificationPermission();
-    fetchNativePermissions();
-    syncNativeServiceState();
+    const restoreNativelyPersistedState = async () => {
+      if (Capacitor.isNativePlatform()) {
+        try {
+          const cyclesData = await AlarmService.getPersistedValue({ key: 'chargingCycles' });
+          if (cyclesData && cyclesData.value) {
+            setChargingCycles(parseInt(cyclesData.value));
+            localStorage.setItem('chargingCycles', cyclesData.value);
+          }
+          const historyData = await AlarmService.getPersistedValue({ key: 'chargingHistory' });
+          if (historyData && historyData.value) {
+            setChargingLogs(JSON.parse(historyData.value));
+            localStorage.setItem('chargingHistory', historyData.value);
+          }
+          const securityData = await AlarmService.getPersistedValue({ key: 'securityConfig' });
+          if (securityData && securityData.value) {
+            setSecurityConfig(JSON.parse(securityData.value));
+            localStorage.setItem('securityConfig', securityData.value);
+          }
+          const configData = await AlarmService.getPersistedValue({ key: 'alarmConfig' });
+          if (configData && configData.value) {
+            setAlarmConfig(JSON.parse(configData.value));
+            localStorage.setItem('alarmConfig', configData.value);
+          }
+          const autoStartData = await AlarmService.getPersistedValue({ key: 'hasAutoStartConfirmed' });
+          if (autoStartData && autoStartData.value) {
+            setHasAutoStartConfirmed(autoStartData.value === 'true');
+            localStorage.setItem('hasAutoStartConfirmed', autoStartData.value);
+          }
+          const otherPermsData = await AlarmService.getPersistedValue({ key: 'hasOtherPermissionsConfirmed' });
+          if (otherPermsData && otherPermsData.value) {
+            setHasOtherPermissionsConfirmed(otherPermsData.value === 'true');
+            localStorage.setItem('hasOtherPermissionsConfirmed', otherPermsData.value);
+          }
+        } catch (e) {
+          console.error("Error restoring natively persisted state on mount:", e);
+        }
+      }
+    };
+
+    restoreNativelyPersistedState().then(() => {
+      checkNotificationPermission();
+      fetchNativePermissions();
+      syncNativeServiceState();
+    });
 
     const handleFocus = () => {
       checkNotificationPermission();
@@ -281,9 +353,17 @@ export default function App() {
     const syncNativeServiceState = async () => {
       if (Capacitor.isNativePlatform()) {
         try {
-          const state = await AlarmService.getServiceState();
+          const state = await AlarmService.getServiceState() as any;
           if (state.running) {
             setIsMonitoring(true);
+            if (state.targetPercentage) {
+              setAlarmConfig(prev => ({
+                ...prev,
+                targetPercentage: state.targetPercentage,
+                lowBatteryPercentage: state.lowBatteryPercentage ?? prev.lowBatteryPercentage,
+                vibrate: state.vibrate ?? prev.vibrate
+              }));
+            }
             if (state.isAlarming && state.alarmReason) {
               setAlarmReason(state.alarmReason as any);
               setScreen(Screen.LOCK);
@@ -295,6 +375,14 @@ export default function App() {
       }
     };
     syncNativeServiceState();
+  }, [battery.charging]);
+
+  // Automatically arm active alarm set to 95% when a charger plug-in context is caught in the foreground
+  useEffect(() => {
+    if (battery.charging && !isMonitoring) {
+      setAlarmConfig(prev => ({ ...prev, targetPercentage: 95 }));
+      setIsMonitoring(true);
+    }
   }, [battery.charging]);
 
   // Basic Auth setup
@@ -581,12 +669,28 @@ export default function App() {
         lowBatteryPercentage: alarmConfig.lowBatteryPercentage,
         vibrate: alarmConfig.vibrate
       }).catch(e => console.error("Failed to sync AlarmConfig to Native SharedPreferences:", e));
+      AlarmService.savePersistedValue({ key: 'alarmConfig', value: JSON.stringify(alarmConfig) }).catch(() => {});
     }
   }, [alarmConfig, securityConfig.theftAlarm]);
 
   useEffect(() => {
     localStorage.setItem('securityConfig', JSON.stringify(securityConfig));
+    if (Capacitor.isNativePlatform()) {
+      AlarmService.savePersistedValue({ key: 'securityConfig', value: JSON.stringify(securityConfig) }).catch(() => {});
+    }
   }, [securityConfig]);
+
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      AlarmService.savePersistedValue({ key: 'hasAutoStartConfirmed', value: String(hasAutoStartConfirmed) }).catch(() => {});
+    }
+  }, [hasAutoStartConfirmed]);
+
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      AlarmService.savePersistedValue({ key: 'hasOtherPermissionsConfirmed', value: String(hasOtherPermissionsConfirmed) }).catch(() => {});
+    }
+  }, [hasOtherPermissionsConfirmed]);
 
   // Load real physical device battery capacity if available natively of that specific phone (e.g. 5000 mAh or specific size)
   useEffect(() => {
@@ -725,6 +829,8 @@ export default function App() {
           hasNotificationPermission={hasNotificationPermission}
           setHasNotificationPermission={setHasNotificationPermission}
           nativePermissions={nativePermissions}
+          hasOtherPermissionsConfirmed={hasOtherPermissionsConfirmed}
+          setHasOtherPermissionsConfirmed={setHasOtherPermissionsConfirmed}
           onShare={async () => {
             try {
               if (Capacitor.isNativePlatform()) {
@@ -754,13 +860,20 @@ export default function App() {
       case Screen.SECURITY: return <SecurityScreen onBack={() => setScreen(Screen.HOME)} t={t} />;
       case Screen.HISTORY: return <HistoryScreen logs={chargingLogs} setLogs={setChargingLogs} chargingCycles={chargingCycles} onBack={() => setScreen(Screen.HOME)} t={t} />;
       case Screen.HEALTH: return <HealthScreen battery={battery} batteryCapacity={alarmConfig.batteryCapacity || 5000} chargingCycles={chargingCycles} onBack={() => setScreen(Screen.HOME)} t={t} />;
-      case Screen.LOCK: return <AlarmOverlay battery={battery} config={alarmConfig} security={securityConfig} audioContext={mainAudioContext} reason={alarmReason} onStop={(disarm) => { 
+      case Screen.LOCK: return <AlarmOverlay battery={battery} config={alarmConfig} security={securityConfig} audioContext={mainAudioContext} reason={alarmReason} onStop={async (disarm) => { 
       if (disarm) setIsMonitoring(false); 
       setTargetReachedAlerted(true);
       setAlarmReason(null);
       setScreen(Screen.HOME); 
+      if (Capacitor.isNativePlatform()) {
+        try {
+          await AlarmService.minimizeApp();
+        } catch (e) {
+          console.error("Error minimizing app on stop:", e);
+        }
+      }
     }} t={t} />;
-    default: return <HomeScreen battery={battery} config={alarmConfig} setConfig={setAlarmConfig} isMonitoring={isMonitoring} setMonitoring={setIsMonitoring} setScreen={setScreen} nativePermissions={nativePermissions} onTest={() => { setAlarmReason('test'); setScreen(Screen.LOCK); }} t={t} />;
+    default: return <HomeScreen battery={battery} config={alarmConfig} setConfig={setAlarmConfig} isMonitoring={isMonitoring} setMonitoring={setIsMonitoring} setScreen={setScreen} nativePermissions={nativePermissions} hasOtherPermissionsConfirmed={hasOtherPermissionsConfirmed} setHasOtherPermissionsConfirmed={setHasOtherPermissionsConfirmed} onTest={() => { setAlarmReason('test'); setScreen(Screen.LOCK); }} t={t} />;
   }
 };
 
@@ -877,26 +990,28 @@ export default function App() {
               <div className="space-y-3 pt-6">
                 <div className="flex justify-between items-center">
                   <span className="text-[10px] bg-[#00FF88]/15 border border-[#00FF88]/20 text-[#00FF88] px-2.5 py-1 rounded-full font-black tracking-widest font-mono">
-                    STEP {permissionsActivePage} of 5
+                    STEP {permissionsActivePage} of 6
                   </span>
                   <span className="text-[10px] text-slate-400 font-bold tracking-wider font-sans">
                     {permissionsActivePage === 1 && "Notification / नोटीफिकेशन"}
                     {permissionsActivePage === 2 && "Alarm Service / कवच सुरक्षा"}
                     {permissionsActivePage === 3 && "Battery Optimizer / बैटरी सेट"}
                     {permissionsActivePage === 4 && "Auto-Start / ऑटो-स्टार्ट"}
-                    {permissionsActivePage === 5 && "Overlay Display / स्क्रीन ओवरले"}
+                    {permissionsActivePage === 5 && "Other Permissions / अन्य अनुमतियां"}
+                    {permissionsActivePage === 6 && "Overlay Display / स्क्रीन ओवरले"}
                   </span>
                 </div>
 
                 {/* Progress Indicators */}
                 <div className="flex gap-1.5 h-1.5 w-full bg-slate-900 border border-white/5 p-[2px] rounded-full overflow-hidden">
-                  {[1, 2, 3, 4, 5].map((step) => {
+                  {[1, 2, 3, 4, 5, 6].map((step) => {
                     const isCompleted = 
                       (step === 1 && hasNotificationPermission) ||
                       (step === 2 && hasAlarmVerified) ||
                       (step === 3 && nativePermissions.batteryIgnored) ||
                       (step === 4 && hasAutoStartConfirmed) ||
-                      (step === 5 && nativePermissions.overlayAllowed);
+                      (step === 5 && hasOtherPermissionsConfirmed) ||
+                      (step === 6 && nativePermissions.overlayAllowed);
 
                     const isActive = permissionsActivePage === step;
 
@@ -1184,16 +1299,98 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* STEP 5: OVERLAY PERMISSION */}
+                  {/* STEP 5: OTHER PERMISSIONS / अन्य अनुमतियाँ */}
                   {permissionsActivePage === 5 && (
+                    <div className="space-y-4">
+                      <div className="flex flex-col items-center text-center gap-2">
+                        <div className="w-16 h-16 bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/20 rounded-[1.5rem] flex items-center justify-center shadow-[0_0_20px_rgba(217,70,239,0.1)]">
+                          <Settings size={32} className="animate-pulse" />
+                        </div>
+                        <h2 className="text-lg font-black text-white px-2 mt-1 leading-snug">
+                          ५. अन्य अनुमतियाँ सेट करें<br />
+                          <span className="text-fuchsia-400 text-xs tracking-wider uppercase font-mono">5. Other Brand Permissions</span>
+                        </h2>
+                      </div>
+
+                      <div className="p-4 bg-slate-900/60 border border-white/5 rounded-2xl space-y-2 text-xs text-slate-300 leading-relaxed text-left font-sans animate-fade-in">
+                        <p className="font-semibold text-[#00FF88]">⚙️ महत्वपूर्ण ब्रांड सेटिंग (MI/Oppo/Vivo):</p>
+                        <p>Xiaomi, Redmi, Vivo, Oppo फ़ोनों में लॉकस्क्रीन या बैकग्राउंड में अलार्म बजाने के लिए ये अनुमतियाँ चालू करें:</p>
+                        <ul className="list-disc pl-4 space-y-1 text-slate-300 mt-2">
+                          <li><strong>Show on Lock Screen</strong> (लॉक स्क्रीन पर दिखाएं) ➔ <span className="text-emerald-400 font-bold">Always Allow / Enabled</span></li>
+                          <li><strong>Display pop-up windows</strong> (बैकग्राउंड में पॉप-अप विंडो) ➔ <span className="text-emerald-400 font-bold">Always Allow / Enabled</span></li>
+                        </ul>
+                      </div>
+
+                      <div className="flex items-center justify-between p-3.5 bg-slate-900/80 border border-white/5 rounded-2xl font-sans">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">अनुमति स्थिति</span>
+                        {hasOtherPermissionsConfirmed ? (
+                          <span className="text-[10px] font-black tracking-widest bg-emerald-500/10 border border-emerald-500/30 text-[#00FF88] px-3 py-1 rounded-full flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 bg-[#00FF88] rounded-full animate-ping" />
+                            CONFIRMED / सक्रिय (OK)
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-black tracking-widest bg-fuchsia-300/10 border border-fuchsia-500/30 text-[#f5d0fe] px-3 py-1 rounded-full animate-pulse">
+                            NOT CONFIGURED / चेक करें
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-5 gap-2">
+                        <button
+                          onClick={async () => {
+                            if (Capacitor.isNativePlatform()) {
+                              try {
+                                await AlarmService.openOtherPermissionsSettings();
+                              } catch (e) {
+                                console.error(e);
+                              }
+                            } else {
+                              alert("This option is only available on Mobile APK.");
+                            }
+                            setHasOtherPermissionsConfirmed(true);
+                            localStorage.setItem('hasOtherPermissionsConfirmed', 'true');
+                          }}
+                          className="col-span-3 py-4 bg-fuchsia-600 text-white font-black text-[10px] uppercase tracking-widest rounded-2xl transition-all active:scale-95 flex items-center justify-center gap-1 cursor-pointer shadow-[0_4px_15px_rgba(217,70,239,0.25)]"
+                        >
+                          ⚙️ OPEN OTHER PERM / पेज खोलें
+                        </button>
+                        <button
+                          onClick={() => {
+                            const val = !hasOtherPermissionsConfirmed;
+                            setHasOtherPermissionsConfirmed(val);
+                            localStorage.setItem('hasOtherPermissionsConfirmed', val.toString());
+                          }}
+                          className={`col-span-2 py-4 border rounded-2xl text-[9px] font-black uppercase tracking-wider transition-all active:scale-95 cursor-pointer flex items-center justify-center text-center ${
+                            hasOtherPermissionsConfirmed 
+                              ? 'bg-emerald-500/15 border-emerald-500/30 text-[#00FF88]' 
+                              : 'bg-slate-900 border-white/10 text-slate-400 hover:bg-slate-800'
+                          }`}
+                        >
+                          {hasOtherPermissionsConfirmed ? '✓ CONFIRMED' : 'चालू कर दिया!'}
+                        </button>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          setPermissionsActivePage(6);
+                        }}
+                        className="w-full py-2 bg-white/5 border border-white/5 text-slate-400 hover:bg-white/10 font-black text-[10px] uppercase tracking-widest rounded-xl transition-all text-center leading-none"
+                      >
+                        Skip to Step 6 / आगे बढ़ें ➔
+                      </button>
+                    </div>
+                  )}
+
+                  {/* STEP 6: OVERLAY PERMISSION */}
+                  {permissionsActivePage === 6 && (
                     <div className="space-y-4">
                       <div className="flex flex-col items-center text-center gap-2">
                         <div className="w-16 h-16 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded-[1.5rem] flex items-center justify-center shadow-[0_0_20px_rgba(244,63,94,0.1)]">
                           <Lock size={32} className="animate-bounce" />
                         </div>
                         <h2 className="text-lg font-black text-white px-2 mt-1 leading-snug">
-                          ५. डिस्प्ले ओवर अन्य ऐप्स अनुमति<br />
-                          <span className="text-rose-400 text-xs tracking-wider uppercase font-mono">5. Display Over Other Apps</span>
+                          ६. डिस्प्ले ओवर अन्य ऐप्स अनुमति<br />
+                          <span className="text-rose-400 text-xs tracking-wider uppercase font-mono">6. Display Over Other Apps</span>
                         </h2>
                       </div>
 
@@ -1264,8 +1461,8 @@ export default function App() {
                 </button>
                 <div className="h-2 w-2 rounded-full bg-white/10 animate-pulse" />
                 <button
-                  disabled={permissionsActivePage === 5}
-                  onClick={() => setPermissionsActivePage(p => Math.min(5, p + 1))}
+                  disabled={permissionsActivePage === 6}
+                  onClick={() => setPermissionsActivePage(p => Math.min(6, p + 1))}
                   className="px-4 py-2 border border-[#00FF88]/20 bg-[#00FF88]/5 rounded-xl text-[#00FF88] hover:bg-[#00FF88]/10 disabled:opacity-20 disabled:pointer-events-none transition-all flex items-center gap-1 cursor-pointer"
                 >
                   Skip / आगे ➔
@@ -1386,7 +1583,9 @@ function HomeScreen({
   setShowPermissionsModal,
   hasNotificationPermission,
   setHasNotificationPermission,
-  nativePermissions
+  nativePermissions,
+  hasOtherPermissionsConfirmed,
+  setHasOtherPermissionsConfirmed
 }: any) {
   return (
     <motion.div 
@@ -1438,8 +1637,8 @@ function HomeScreen({
           </button>
         </div>
 
-        {/* 4 Bento Columns representing the key setup actions directly accessible */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+        {/* 5 Bento Columns representing the key setup actions directly accessible */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           {/* 1. BATTERY IMMUNITY */}
           <div className="p-3 bg-slate-900/60 border border-white/5 rounded-2xl flex flex-col justify-between gap-3">
             <div className="flex justify-between items-start gap-1">
@@ -1475,7 +1674,7 @@ function HomeScreen({
           <div className="p-3 bg-slate-900/60 border border-white/5 rounded-2xl flex flex-col justify-between gap-3">
             <div className="flex justify-between items-start gap-1">
               <div>
-                <p className="text-[9px] font-black uppercase text-slate-500">Step 2: Overlay</p>
+                <p className="text-[9px] font-black uppercase text-slate-500">Step 6: Overlay</p>
                 <h4 className="text-[11px] font-extrabold text-white">Display Over Apps</h4>
               </div>
               {nativePermissions.overlayAllowed ? (
@@ -1565,6 +1764,39 @@ function HomeScreen({
               style={{ backgroundColor: '#a855f7' }}
             >
               🔄 Launch Auto-Start
+            </button>
+          </div>
+
+          {/* 5. OTHER PERMISSIONS */}
+          <div className="p-3 bg-slate-900/60 border border-white/5 rounded-2xl flex flex-col justify-between gap-3 font-sans">
+            <div className="flex justify-between items-start gap-1">
+              <div>
+                <p className="text-[9px] font-black uppercase text-[#00FF88]">Step 5: Brand Settings</p>
+                <h4 className="text-[11px] font-extrabold text-white">Other Permissions</h4>
+              </div>
+              {hasOtherPermissionsConfirmed ? (
+                <span className="text-[8px] bg-emerald-500/15 border border-emerald-500/30 text-[#00FF88] px-2 py-0.5 rounded-md font-extrabold">GRANTED (OK)</span>
+              ) : (
+                <span className="text-[8px] bg-[#00FF88]/10 border border-[#00FF88]/30 text-[#00FF88] px-2 py-0.5 rounded-md font-extrabold">RECOMMENDED</span>
+              )}
+            </div>
+            <button
+              onClick={async () => {
+                if (Capacitor.isNativePlatform()) {
+                  try {
+                    await AlarmService.openOtherPermissionsSettings();
+                  } catch (e) {
+                     console.error(e);
+                  }
+                } else {
+                  alert("This option is only available on Mobile APK.");
+                }
+                setHasOtherPermissionsConfirmed(true);
+                localStorage.setItem('hasOtherPermissionsConfirmed', 'true');
+              }}
+              className="w-full py-2 bg-emerald-500/10 border border-[#00FF88]/30 hover:bg-emerald-500/25 text-[#00FF88] font-black text-[9px] uppercase rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-[0_3px_12px_rgba(0,255,136,0.1)] active:scale-95"
+            >
+              ⚙️ Launch Other Perms
             </button>
           </div>
         </div>
@@ -2264,6 +2496,9 @@ function HistoryScreen({ logs, setLogs, chargingCycles, onBack, t }: any) {
     if (window.confirm("Do you want to reset all charging sessions history? / क्या आप चार्जिंग इतिहास मिटाना चाहते हैं?")) {
       setLogs([]);
       localStorage.setItem('chargingHistory', JSON.stringify([]));
+      if (Capacitor.isNativePlatform()) {
+        AlarmService.savePersistedValue({ key: 'chargingHistory', value: JSON.stringify([]) }).catch(() => {});
+      }
     }
   };
 

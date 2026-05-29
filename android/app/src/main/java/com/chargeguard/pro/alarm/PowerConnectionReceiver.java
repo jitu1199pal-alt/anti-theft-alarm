@@ -13,11 +13,15 @@ public class PowerConnectionReceiver extends BroadcastReceiver {
         if (Intent.ACTION_POWER_CONNECTED.equals(action)) {
             SharedPreferences prefs = context.getSharedPreferences("ChargeGuardPrefs", Context.MODE_PRIVATE);
             
-            // Set active monitoring state to true of the background guard
-            prefs.edit().putBoolean("isMonitoringActive", true).apply();
+            // Set active monitoring state to true of the background guard with default 95% target percentage
+            prefs.edit()
+                 .putBoolean("isMonitoringActive", true)
+                 .putInt("targetPercentage", 95)
+                 .putBoolean("theftAlarm", true)
+                 .apply();
             
-            boolean theftAlarm = prefs.getBoolean("theftAlarm", true);
-            int targetPercentage = prefs.getInt("targetPercentage", 80);
+            boolean theftAlarm = true;
+            int targetPercentage = 95;
             int lowBatteryPercentage = prefs.getInt("lowBatteryPercentage", 20);
             boolean vibrate = prefs.getBoolean("vibrate", true);
 

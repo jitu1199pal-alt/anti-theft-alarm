@@ -15,9 +15,9 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 @CapacitorPlugin(name = "AlarmService")
 public class AlarmServicePlugin extends Plugin {
 
-    private static boolean isServiceRunning = false;
-    private static boolean activeAlarmTriggered = false;
-    private static String activeAlarmReason = null;
+    public static boolean isServiceRunning = false;
+    public static boolean activeAlarmTriggered = false;
+    public static String activeAlarmReason = null;
 
     public static void setAlarmState(boolean alarming, String reason) {
         activeAlarmTriggered = alarming;
@@ -103,11 +103,76 @@ public class AlarmServicePlugin extends Plugin {
 
     @PluginMethod
     public void getServiceState(PluginCall call) {
+        Context context = getContext();
+        android.content.SharedPreferences prefs = context.getSharedPreferences("ChargeGuardPrefs", Context.MODE_PRIVATE);
+        boolean monitoringActive = prefs.getBoolean("isMonitoringActive", false);
+
         JSObject result = new JSObject();
-        result.put("running", isServiceRunning);
+        result.put("running", isServiceRunning || monitoringActive);
         result.put("isAlarming", activeAlarmTriggered);
         result.put("alarmReason", activeAlarmReason != null ? activeAlarmReason : "");
+        result.put("theftAlarm", prefs.getBoolean("theftAlarm", true));
+        result.put("targetPercentage", prefs.getInt("targetPercentage", 95));
+        result.put("lowBatteryPercentage", prefs.getInt("lowBatteryPercentage", 20));
+        result.put("vibrate", prefs.getBoolean("vibrate", true));
         call.resolve(result);
+    }
+
+    @PluginMethod
+    public void minimizeApp(PluginCall call) {
+        try {
+            if (getActivity() != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    getActivity().finishAndRemoveTask();
+                } else {
+                    getActivity().finish();
+                }
+            }
+            JSObject result = new JSObject();
+            result.put("success", true);
+            call.resolve(result);
+        } catch (Exception e) {
+            call.reject("Failed to minimize application: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void savePersistedValue(PluginCall call) {
+        String key = call.getString("key");
+        String value = call.getString("value");
+        if (key == null) {
+            call.reject("Missing key parameter");
+            return;
+        }
+        try {
+            Context context = getContext();
+            android.content.SharedPreferences prefs = context.getSharedPreferences("ChargeGuardPrefs", Context.MODE_PRIVATE);
+            prefs.edit().putString("persisted_" + key, value).apply();
+            JSObject result = new JSObject();
+            result.put("success", true);
+            call.resolve(result);
+        } catch (Exception e) {
+            call.reject("Failed to persist value natively: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void getPersistedValue(PluginCall call) {
+        String key = call.getString("key");
+        if (key == null) {
+            call.reject("Missing key parameter");
+            return;
+        }
+        try {
+            Context context = getContext();
+            android.content.SharedPreferences prefs = context.getSharedPreferences("ChargeGuardPrefs", Context.MODE_PRIVATE);
+            String value = prefs.getString("persisted_" + key, null);
+            JSObject result = new JSObject();
+            result.put("value", value);
+            call.resolve(result);
+        } catch (Exception e) {
+            call.reject("Failed to retrieve native persisted value: " + e.getMessage());
+        }
     }
 
     @PluginMethod
@@ -194,6 +259,53 @@ public class AlarmServicePlugin extends Plugin {
             try {
                 Intent intent = new Intent();
                 intent.setClassName(intentInfo[0], intentInfo[1]);
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(intent);
+                opened = true;
+                break;
+            } catch (Exception e) {
+                // Try next
+            }
+        }
+
+        if (!opened) {
+            try {
+                Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                intent.setData(Uri.parse("package:" + context.getPackageName()));
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(intent);
+                opened = true;
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        JSObject result = new JSObject();
+        result.put("success", opened);
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void openOtherPermissionsSettings(PluginCall call) {
+        Context context = getContext();
+        boolean opened = false;
+        
+        String[][] intents = {
+            {"com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity"},
+            {"com.miui.securitycenter", "com.miui.permcenter.permissions.AppPermissionsEditorActivity"},
+            {"com.coloros.safecenter", "com.coloros.safecenter.permission.PermissionManagerActivity"},
+            {"com.coloros.safecenter", "com.coloros.safecenter.permission.PermissionAppListActivity"},
+            {"com.oppo.safe", "com.oppo.safe.permission.PermissionAppListActivity"},
+            {"com.iqoo.secure", "com.iqoo.secure.ui.permission.PermissionManagerActivity"},
+            {"com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.SoftPermissionDetailActivity"}
+        };
+
+        for (String[] intentInfo : intents) {
+            try {
+                Intent intent = new Intent();
+                intent.setClassName(intentInfo[0], intentInfo[1]);
+                intent.putExtra("extra_pkgname", context.getPackageName());
+                intent.putExtra("package_name", context.getPackageName());
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 context.startActivity(intent);
                 opened = true;
@@ -414,6 +526,72 @@ public class AlarmServicePlugin extends Plugin {
 
         JSObject result = new JSObject();
         result.put("capacity", capacityInt);
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void openOtherPermissionsSettings(PluginCall call) {
+        Context context = getContext();
+        boolean opened = false;
+        
+        // 1. Try MIUI (Xiaomi) Other Permissions Editor screen
+        try {
+            Intent intent = new Intent("miui.intent.action.APP_PERM_EDITOR");
+            intent.setClassName("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity");
+            intent.putExtra("extra_pkgname", context.getPackageName());
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(intent);
+            opened = true;
+        } catch (Exception e1) {
+            try {
+                Intent intent = new Intent("miui.intent.action.APP_PERM_EDITOR");
+                intent.setClassName("com.miui.securitycenter", "com.miui.permcenter.permissions.AppPermissionsEditorActivity");
+                intent.putExtra("extra_pkgname", context.getPackageName());
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(intent);
+                opened = true;
+            } catch (Exception e2) {
+                try {
+                    Intent intent = new Intent("miui.intent.action.APP_PERM_EDITOR");
+                    intent.putExtra("extra_pkgname", context.getPackageName());
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    context.startActivity(intent);
+                    opened = true;
+                } catch (Exception e3) {
+                    // Try next
+                }
+            }
+        }
+
+        // 2. Try OPPO (ColorOS) App Permissions Manager
+        if (!opened) {
+            try {
+                Intent intent = new Intent();
+                intent.setClassName("com.coloros.safecenter", "com.coloros.safecenter.permission.PermissionManagerActivity");
+                intent.putExtra("packageName", context.getPackageName());
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(intent);
+                opened = true;
+            } catch (Exception e) {
+                // Try next
+            }
+        }
+
+        // 3. Fallback to general App Info screen (ACTION_APPLICATION_DETAILS_SETTINGS)
+        if (!opened) {
+            try {
+                Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                intent.setData(Uri.parse("package:" + context.getPackageName()));
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(intent);
+                opened = true;
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        JSObject result = new JSObject();
+        result.put("success", opened);
         call.resolve(result);
     }
 }

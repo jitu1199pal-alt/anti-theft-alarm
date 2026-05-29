@@ -15,8 +15,8 @@ public class BootReceiver extends BroadcastReceiver {
 
             if (isMonitoringActive) {
                 Intent serviceIntent = new Intent(context, AlarmService.class);
-                boolean theftAlarm = prefs.getBoolean("theftAlarm", false);
-                int targetPercentage = prefs.getInt("targetPercentage", 80);
+                boolean theftAlarm = prefs.getBoolean("theftAlarm", true);
+                int targetPercentage = prefs.getInt("targetPercentage", 95);
                 int lowBatteryPercentage = prefs.getInt("lowBatteryPercentage", 20);
                 boolean vibrate = prefs.getBoolean("vibrate", true);
 
