@@ -45,7 +45,9 @@ interface AlarmServicePluginType {
   openAppInfo(): Promise<{ success: boolean }>;
   openOverlaySettings(): Promise<{ success: boolean }>;
   openAutoStartSettings(): Promise<{ success: boolean }>;
-  getPermissionsState(): Promise<{ batteryIgnored: boolean; overlayAllowed: boolean }>;
+  openNotificationSettings(): Promise<{ success: boolean }>;
+  getBatteryCapacity(): Promise<{ capacity: number }>;
+  getPermissionsState(): Promise<{ batteryIgnored: boolean; overlayAllowed: boolean; notificationsEnabled?: boolean }>;
   saveConfig(options: {
     theftAlarm: boolean;
     targetPercentage: number;
@@ -211,6 +213,9 @@ export default function App() {
       try {
         const state = await AlarmService.getPermissionsState();
         setNativePermissions(state);
+        if (state.notificationsEnabled !== undefined) {
+          setHasNotificationPermission(state.notificationsEnabled);
+        }
       } catch (e) {
         console.error("Error fetching permissions state:", e);
       }
@@ -568,6 +573,28 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('securityConfig', JSON.stringify(securityConfig));
   }, [securityConfig]);
+
+  // Load real physical device battery capacity if available natively of that specific phone (e.g. 5000 mAh or specific size)
+  useEffect(() => {
+    const fetchPhysicalBatteryCapacity = async () => {
+      if (Capacitor.isNativePlatform()) {
+        try {
+          const result = await AlarmService.getBatteryCapacity();
+          if (result && result.capacity > 0) {
+            setAlarmConfig(prev => {
+              if (prev.batteryCapacity !== result.capacity) {
+                return { ...prev, batteryCapacity: result.capacity };
+              }
+              return prev;
+            });
+          }
+        } catch (e) {
+          console.error("Failed to query physical battery capacity:", e);
+        }
+      }
+    };
+    fetchPhysicalBatteryCapacity();
+  }, []);
   
   // Temperature Watcher
   useEffect(() => {
@@ -1268,7 +1295,13 @@ function HomeScreen({
             </div>
             <button
               onClick={async () => {
-                if ('Notification' in window) {
+                if (Capacitor.isNativePlatform()) {
+                  try {
+                    await AlarmService.openNotificationSettings();
+                  } catch (e) {
+                    console.error("Failed to open native notification settings:", e);
+                  }
+                } else if ('Notification' in window) {
                   try {
                     const perm = await Notification.requestPermission();
                     if (perm === 'granted') {
@@ -1751,7 +1784,7 @@ function AlarmSettings({ config, setConfig, onBack, t }: any) {
           <input 
             type="range" 
             min="2000"
-            max="7000"
+            max="10000"
             step="100"
             className="w-full h-2 accent-accent bg-slate-800 rounded-full appearance-none cursor-pointer" 
             value={config.batteryCapacity || 5000} 
