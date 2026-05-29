@@ -185,6 +185,20 @@ export default function App() {
   // Background Lock-Screen Compatibility & Permissions States
   const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [permissionsActivePage, setPermissionsActivePage] = useState(1);
+  const [hasAutoStartConfirmed, setHasAutoStartConfirmed] = useState(() => {
+    try {
+      return localStorage.getItem('hasAutoStartConfirmed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [hasAlarmVerified, setHasAlarmVerified] = useState(() => {
+    try {
+      return localStorage.getItem('hasAlarmVerified') === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [hasNotificationPermission, setHasNotificationPermission] = useState(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
       return Notification.permission === 'granted';
@@ -804,22 +818,25 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-black/95 backdrop-blur-lg z-[100] flex items-center justify-center p-4"
+            className="absolute inset-0 bg-slate-950/98 backdrop-blur-xl z-[120] flex items-center justify-center p-4 overflow-y-auto"
             id="permissions-modal-overlay"
           >
             <motion.div 
-              initial={{ scale: 0.95, y: 30 }}
+              initial={{ scale: 0.9, y: 40 }}
               animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.95, y: 30 }}
-              className="w-full max-w-[440px] bg-[#0c101d] border border-white/10 rounded-[2rem] p-5 max-h-[95%] overflow-y-auto relative flex flex-col gap-4 text-left shadow-[0_25px_60px_rgba(0,0,0,0.85)] animate-fade-in"
+              exit={{ scale: 0.9, y: 40 }}
+              transition={{ type: "spring", duration: 0.5 }}
+              className="w-full max-w-[400px] bg-[#0c101d] border border-white/10 rounded-[2.5rem] p-6 pb-8 relative flex flex-col gap-6 shadow-[0_25px_60px_rgba(0,0,0,0.9)] my-auto text-left"
               id="permissions-modal-card"
             >
-              {/* Close Icon / Skip */}
+              {/* Close Button / Skip */}
               <button 
                 onClick={() => {
                   setShowPermissionsModal(false);
+                  localStorage.setItem('permissionReminderDismissed', 'true');
+                  setPermissionReminderDismissed(true);
                 }}
-                className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 text-lg transition-colors duration-200 z-[110]"
+                className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 text-lg transition-all duration-200 z-[130]"
                 id="permissions-modal-close"
               >
                 ×
@@ -850,223 +867,408 @@ export default function App() {
                     console.error("Share failed", e);
                   }
                 }}
-                className="absolute top-4 right-14 flex items-center gap-1 px-2.5 py-1.5 bg-emerald-500/10 border border-emerald-500/30 text-[#00FF88] font-bold rounded-full text-[9px] shadow-[0_0_10px_rgba(0,255,136,0.1)] transition-all hover:bg-emerald-500/20 active:scale-95 z-[110]"
+                className="absolute top-4 right-14 flex items-center gap-1 px-2.5 py-1.5 bg-emerald-500/10 border border-emerald-500/30 text-[#00FF88] font-bold rounded-full text-[9px] shadow-[0_0_10px_rgba(0,255,136,0.1)] transition-all hover:bg-emerald-500/20 active:scale-95 z-[130]"
               >
                 <Share2 size={10} />
-                <span>ऐप शेयर करें (Share)</span>
+                <span>ऐप शेयर (Share)</span>
               </button>
 
-              {/* Title Header */}
-              <div className="flex gap-3 items-center mt-3 pr-24">
-                <div className="w-10 h-10 bg-amber-500/10 text-amber-500 rounded-xl flex items-center justify-center shrink-0">
-                  <ShieldCheck size={22} className="animate-pulse" />
+              {/* Progress Stepper Header */}
+              <div className="space-y-3 pt-6">
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] bg-[#00FF88]/15 border border-[#00FF88]/20 text-[#00FF88] px-2.5 py-1 rounded-full font-black tracking-widest font-mono">
+                    STEP {permissionsActivePage} of 5
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-bold tracking-wider font-sans">
+                    {permissionsActivePage === 1 && "Notification / नोटीफिकेशन"}
+                    {permissionsActivePage === 2 && "Alarm Service / कवच सुरक्षा"}
+                    {permissionsActivePage === 3 && "Battery Optimizer / बैटरी सेट"}
+                    {permissionsActivePage === 4 && "Auto-Start / ऑटो-स्टार्ट"}
+                    {permissionsActivePage === 5 && "Overlay Display / स्क्रीन ओवरले"}
+                  </span>
                 </div>
-                <div>
-                  <h3 className="text-sm font-black uppercase text-amber-500 tracking-wider">
-                    सुरक्षा अनुमति सेटअप (Permissions)
-                  </h3>
-                  <p className="text-[10px] text-slate-400 font-medium">सुरक्षित बैकग्राउंड और अलार्म के लिए निम्न सेटअप करें:</p>
+
+                {/* Progress Indicators */}
+                <div className="flex gap-1.5 h-1.5 w-full bg-slate-900 border border-white/5 p-[2px] rounded-full overflow-hidden">
+                  {[1, 2, 3, 4, 5].map((step) => {
+                    const isCompleted = 
+                      (step === 1 && hasNotificationPermission) ||
+                      (step === 2 && hasAlarmVerified) ||
+                      (step === 3 && nativePermissions.batteryIgnored) ||
+                      (step === 4 && hasAutoStartConfirmed) ||
+                      (step === 5 && nativePermissions.overlayAllowed);
+
+                    const isActive = permissionsActivePage === step;
+
+                    return (
+                      <button
+                        key={step}
+                        onClick={() => setPermissionsActivePage(step)}
+                        className={`flex-1 h-full rounded-full transition-all duration-300 ${
+                          isActive 
+                            ? 'bg-[#00FF88] shadow-[0_0_8px_rgba(0,255,136,0.5)]' 
+                            : isCompleted 
+                              ? 'bg-emerald-500/60' 
+                              : 'bg-slate-800'
+                        }`}
+                      />
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Warning Notice Box */}
-              <div className="p-3 bg-amber-500/5 border border-amber-500/20 rounded-xl text-[10.5px] text-slate-300 leading-normal">
-                <strong>⚠️ अत्यंत महत्वपूर्ण सूचना:</strong> Xiaomi, Realme, Samsung, Oppo, Vivo जैसे फ़ोन्स पर स्क्रीन लॉक होने पर भी सुरक्षा कवच अलार्म बजने के लिए नीचे दी गई अनुमतियाँ आवश्यक हैं।
-              </div>
-
-              {/* Bento Config Item Rows */}
-              <div className="space-y-3">
-                
-                {/* 1. BATTERY Saver */}
-                <div className="p-3 bg-slate-900/60 border border-white/5 rounded-xl flex flex-col gap-2.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center shrink-0">
-                        <Battery size={15} />
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-black text-white leading-tight">
-                          1. बैटरी अनुमति (Battery Permission)
-                        </h4>
-                        <p className="text-[10.5px] text-slate-400">‘नो ऑप्टिमाइज़ेशन - Unrestricted’ सेट करें</p>
-                      </div>
-                    </div>
-                    <div>
-                      {nativePermissions.batteryIgnored ? (
-                        <span className="text-[9px] bg-emerald-500/10 border border-emerald-500/30 text-[#00FF88] px-2 py-0.5 rounded-md font-extrabold uppercase">सक्रिय (OK)</span>
-                      ) : (
-                        <span className="text-[9px] bg-red-400/10 border border-red-500/30 text-red-400 px-2 py-0.5 rounded-md font-extrabold uppercase">आवश्यक</span>
-                      )}
-                    </div>
-                  </div>
-                  
-                  {!nativePermissions.batteryIgnored && (
-                    <button
-                      onClick={async () => {
-                        if (Capacitor.isNativePlatform()) {
-                          try {
-                            await AlarmService.requestBatteryOptimization();
-                          } catch (e) {
-                            console.error(e);
-                          }
-                        } else {
-                          alert("This option is only available on Mobile APK.");
-                        }
-                      }}
-                      className="w-full py-2 bg-blue-500 hover:bg-blue-600 text-black font-extrabold text-[10px] uppercase tracking-wider rounded-lg transition-all active:scale-98 flex items-center justify-center gap-1 shadow-[0_3px_10px_rgba(59,130,246,0.2)]"
-                    >
-                      🔋 बैटरी छूट दें (Allow Battery)
-                    </button>
-                  )}
-                </div>
-
-                {/* 2. OVERLAY Display (Screen Draw) */}
-                <div className="p-3 bg-slate-900/60 border border-white/5 rounded-xl flex flex-col gap-2.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0">
-                        <Lock size={15} />
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-black text-white leading-tight">
-                          2. स्क्रीन के ऊपर प्रदर्शित करें (Overlay)
-                        </h4>
-                        <p className="text-[10px] text-slate-400">लॉकस्क्रीन पर तुरंत अलार्म खोलने के लिए</p>
-                      </div>
-                    </div>
-                    <div>
-                      {nativePermissions.overlayAllowed ? (
-                        <span className="text-[9px] bg-emerald-500/10 border border-emerald-500/30 text-[#00FF88] px-2 py-0.5 rounded-md font-extrabold uppercase">सक्रिय (OK)</span>
-                      ) : (
-                        <span className="text-[9px] bg-red-400/10 border border-red-500/30 text-red-400 px-2 py-0.5 rounded-md font-extrabold uppercase">आवश्यक</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {!nativePermissions.overlayAllowed && (
-                    <button
-                      onClick={async () => {
-                        if (Capacitor.isNativePlatform()) {
-                          try {
-                            await AlarmService.openOverlaySettings();
-                          } catch (e) {
-                            console.error(e);
-                          }
-                        } else {
-                          alert("This option is only available on Mobile APK.");
-                        }
-                      }}
-                      className="w-full py-2 bg-amber-500 hover:bg-amber-600 text-black font-extrabold text-[10px] uppercase tracking-wider rounded-lg transition-all active:scale-98 flex items-center justify-center gap-1 shadow-[0_3px_10px_rgba(245,158,11,0.2)]"
-                    >
-                      📺 ओवरले सेटिंग खोलें (Allow Overlay)
-                    </button>
-                  )}
-                </div>
-
-                {/* 3. SYSTEM NOTIFICATIONS */}
-                <div className="p-3 bg-slate-900/60 border border-white/5 rounded-xl flex flex-col gap-2.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0">
-                        <Bell size={15} />
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-black text-white leading-tight">
-                          3. नोटिफिकेशन सेवा (Notification Alert)
-                        </h4>
-                        <p className="text-[10px] text-slate-400">अलार्म और सुरक्षा सर्विस एक्टिव रखने के लिए</p>
-                      </div>
-                    </div>
-                    <div>
-                      {hasNotificationPermission ? (
-                        <span className="text-[9px] bg-emerald-500/10 border border-emerald-500/30 text-[#00FF88] px-2 py-0.5 rounded-md font-extrabold uppercase">सक्रिय (OK)</span>
-                      ) : (
-                        <span className="text-[9px] bg-red-400/10 border border-red-500/30 text-red-400 px-2 py-0.5 rounded-md font-extrabold uppercase">आवश्यक</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {!hasNotificationPermission && (
-                    <button
-                      onClick={async () => {
-                        if (Capacitor.isNativePlatform()) {
-                          try {
-                            await AlarmService.openNotificationSettings();
-                          } catch (e) {
-                            console.error("Failed to open native notification settings:", e);
-                          }
-                        } else if ('Notification' in window) {
-                          try {
-                            const perm = await Notification.requestPermission();
-                            if (perm === 'granted') {
-                              setHasNotificationPermission(true);
-                            }
-                          } catch (e) {
-                            console.error(e);
-                          }
-                        }
-                      }}
-                      className="w-full py-2 bg-emerald-500 hover:bg-emerald-600 text-black font-extrabold text-[10px] uppercase tracking-wider rounded-lg transition-all active:scale-98 flex items-center justify-center gap-1 shadow-[0_3px_10px_rgba(16,185,129,0.2)]"
-                    >
-                      🔔 नोटिफिकेशन अनुमति दें (Allow Notification)
-                    </button>
-                  )}
-                </div>
-
-                {/* 4. AUTO START SETTINGS (FOR MI, REALME, OPPO, VIVO, ETC) */}
-                <div className="p-3 bg-slate-900/60 border border-white/5 rounded-xl flex flex-col gap-2.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-lg bg-purple-500/10 text-purple-400 flex items-center justify-center shrink-0">
-                        <Power size={15} />
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-black text-white leading-tight">
-                          4. ऑटो-स्टार्ट सेटिंग (Auto-Start Settings)
-                        </h4>
-                        <p className="text-[10px] text-slate-400">Xiaomi, Realme, Vivo, Oppo फ़ोन्स पर कंपलसरी</p>
-                      </div>
-                    </div>
-                    <div>
-                      <span className="text-[8px] bg-purple-500/10 border border-purple-500/30 text-purple-400 px-2 py-0.5 rounded-md font-extrabold uppercase">अत्यंत उपयोगी</span>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={async () => {
-                      if (Capacitor.isNativePlatform()) {
-                        try {
-                          await AlarmService.openAutoStartSettings();
-                        } catch (e) {
-                          console.error(e);
-                        }
-                      } else {
-                        alert("This option is only available on Mobile APK.");
-                      }
-                    }}
-                    className="w-full py-2 bg-purple-500 hover:bg-purple-600 text-black font-extrabold text-[10px] uppercase tracking-wider rounded-lg transition-all active:scale-98 flex items-center justify-center gap-1 shadow-[0_3px_10px_rgba(168,85,247,0.2)]"
-                  >
-                    🔄 ऑटो-स्टार्ट सेटिंग खोलें (Open Auto-Start Settings)
-                  </button>
-                </div>
-
-              </div>
-
-              {/* Submit footer button to close and auto-arm the device safety */}
-              <div className="mt-3 pt-3 border-t border-white/5">
-                <button
-                  onClick={() => {
-                    setShowPermissionsModal(false);
-                    localStorage.setItem('permissionReminderDismissed', 'true');
-                    setPermissionReminderDismissed(true);
-                    if (mainAudioContext) {
-                      mainAudioContext.resume();
-                    }
-                    setIsMonitoring(true);
-                  }}
-                  className="w-full py-3.5 bg-[#00FF88] text-black font-black text-xs uppercase tracking-wider rounded-xl shadow-[0_4px_25px_rgba(0,255,136,0.3)] hover:brightness-110 cursor-pointer transition-all active:scale-95 text-center flex items-center justify-center gap-2"
+              {/* Steps Body */}
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={permissionsActivePage}
+                  initial={{ x: 15, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  exit={{ x: -15, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="space-y-4"
                 >
-                  ⚡ ठीक है, कवच सुरक्षित करें (Activate Security)
+                  {/* STEP 1: NOTIFICATION PERMISSION */}
+                  {permissionsActivePage === 1 && (
+                    <div className="space-y-4">
+                      <div className="flex flex-col items-center text-center gap-2">
+                        <div className="w-16 h-16 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-[1.5rem] flex items-center justify-center shadow-[0_0_20px_rgba(59,130,246,0.1)]">
+                          <Bell size={32} className="animate-bounce" />
+                        </div>
+                        <h2 className="text-lg font-black text-white px-2 mt-1 leading-snug">
+                          १. नोटिफिकेशन अनुमति<br />
+                          <span className="text-blue-400 text-xs tracking-wider uppercase font-mono">1. Notification Permission</span>
+                        </h2>
+                      </div>
+
+                      <div className="p-4 bg-slate-900/60 border border-white/5 rounded-2xl space-y-2 text-xs text-slate-300 leading-relaxed text-left">
+                        <p className="font-semibold text-white">🔔 यह क्यों आवश्यक है?</p>
+                        <p>एंड्रॉइड फ़ोन पर सिक्योरिटी कवच सेवा को बैकग्राउंड में चालू रखने और चार्ज फुल/थेफ़्ट होने पर अलार्म नोटिफिकेशन भेजने के लिए यह अनुमति अनिवार्य है।</p>
+                      </div>
+
+                      <div className="flex items-center justify-between p-3.5 bg-slate-900/80 border border-white/5 rounded-2xl">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">अनुमति स्थिति (Status)</span>
+                        {hasNotificationPermission ? (
+                          <span className="text-[10px] font-black tracking-widest bg-emerald-500/10 border border-emerald-500/30 text-[#00FF88] px-3 py-1 rounded-full flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 bg-[#00FF88] rounded-full animate-ping" />
+                            GRANTED / सक्रिय
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-black tracking-widest bg-red-500/10 border border-red-500/30 text-red-400 px-3 py-1 rounded-full animate-pulse">
+                            REQUIRED / आवश्यक
+                          </span>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={async () => {
+                          if (hasNotificationPermission) {
+                            setPermissionsActivePage(2);
+                          } else {
+                            if (Capacitor.isNativePlatform()) {
+                              try {
+                                await AlarmService.openNotificationSettings();
+                              } catch (e) {
+                                console.error(e);
+                              }
+                            } else if ('Notification' in window) {
+                              try {
+                                const perm = await Notification.requestPermission();
+                                if (perm === 'granted') {
+                                  setHasNotificationPermission(true);
+                                  setPermissionsActivePage(2);
+                                }
+                              } catch (e) {
+                                console.error(e);
+                              }
+                            } else {
+                              setHasNotificationPermission(true);
+                              setPermissionsActivePage(2);
+                            }
+                          }
+                        }}
+                        className={`w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all duration-300 active:scale-95 flex items-center justify-center gap-2 cursor-pointer ${
+                          hasNotificationPermission 
+                            ? 'bg-[#00FF88] text-black shadow-[0_4px_20px_rgba(0,255,136,0.25)]' 
+                            : 'bg-blue-500 text-black hover:brightness-110 shadow-[0_4px_20px_rgba(59,130,246,0.3)] hover:shadow-blue-500/40'
+                        }`}
+                      >
+                        {hasNotificationPermission ? 'NEXT STEP / आगे बढ़ें ➔' : 'ENABLE NOW / अभी अनुमति दें 🚀'}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* STEP 2: ALARM SERVICE ACTIVE / WAKE LOCK */}
+                  {permissionsActivePage === 2 && (
+                    <div className="space-y-4">
+                      <div className="flex flex-col items-center text-center gap-2">
+                        <div className="w-16 h-16 bg-emerald-500/10 text-[#00FF88] border border-emerald-500/20 rounded-[1.5rem] flex items-center justify-center shadow-[0_0_20px_rgba(0,255,136,0.1)]">
+                          <ShieldCheck size={32} className="animate-pulse" />
+                        </div>
+                        <h2 className="text-lg font-black text-white px-2 mt-1 leading-snug">
+                          २. कवच सर्विस वेरिफिकेशन<br />
+                          <span className="text-[#00FF88] text-xs tracking-wider uppercase font-mono">2. Persistent Alarm Security</span>
+                        </h2>
+                      </div>
+
+                      <div className="p-4 bg-slate-900/60 border border-white/5 rounded-2xl space-y-2 text-xs text-slate-300 leading-relaxed text-left">
+                        <p className="font-semibold text-white">🛡️ यह क्या करता है?</p>
+                        <p>यह वेक-लॉक सिस्टम है। जब आपका मोबाइल बंद या लॉक होता है, तब भी यह अंदरूनी सर्विस को जगाए रखता है ताकि चोरी या केबल हटते ही तुरंत फुल साउंड अलार्म बज सके।</p>
+                      </div>
+
+                      <div className="flex items-center justify-between p-3.5 bg-slate-900/80 border border-white/5 rounded-2xl">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">सुरक्षा कवच स्थिति</span>
+                        {hasAlarmVerified ? (
+                          <span className="text-[10px] font-black tracking-widest bg-emerald-500/10 border border-emerald-500/30 text-[#00FF88] px-3 py-1 rounded-full flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 bg-[#00FF88] rounded-full animate-ping" />
+                            VERIFIED / जांची गई
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-black tracking-widest bg-amber-500/10 border border-amber-500/30 text-amber-500 px-3 py-1 rounded-full animate-pulse">
+                            UNCHECKED / जांचें
+                          </span>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          setHasAlarmVerified(true);
+                          localStorage.setItem('hasAlarmVerified', 'true');
+                          setPermissionsActivePage(3);
+                        }}
+                        className={`w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all duration-300 active:scale-95 flex items-center justify-center gap-2 cursor-pointer ${
+                          hasAlarmVerified 
+                            ? 'bg-[#00FF88] text-black shadow-[0_4px_20px_rgba(0,255,136,0.25)]' 
+                            : 'bg-emerald-600 text-white hover:brightness-110 shadow-[0_4px_20px_rgba(16,185,129,0.3)] hover:shadow-emerald-500/40'
+                        }`}
+                      >
+                        {hasAlarmVerified ? 'NEXT STEP / आगे बढ़ें ➔' : 'VERIFY NOW / सुरक्षा सुनिश्चित करें 💫'}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* STEP 3: BATTERY OPTIMIZATION */}
+                  {permissionsActivePage === 3 && (
+                    <div className="space-y-4">
+                      <div className="flex flex-col items-center text-center gap-2">
+                        <div className="w-16 h-16 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-[1.5rem] flex items-center justify-center shadow-[0_0_20px_rgba(245,158,11,0.1)]">
+                          <Battery size={32} className="animate-bounce" />
+                        </div>
+                        <h2 className="text-lg font-black text-white px-2 mt-1 leading-snug">
+                          ३. बैटरी ऑप्टिमाइजेशन बंद करें<br />
+                          <span className="text-amber-400 text-xs tracking-wider uppercase font-mono">3. Battery Saver Immunity</span>
+                        </h2>
+                      </div>
+
+                      <div className="p-4 bg-slate-900/60 border border-white/5 rounded-2xl space-y-2 text-xs text-slate-300 leading-relaxed text-left font-sans">
+                        <p className="font-semibold text-white">🔋 आवश्यक सेटिंग्स:</p>
+                        <p>एंड्रॉइड की बैटरी सेविंग पॉलिसी ऐप को बंद कर देती है। सेटिंग्स पेज खुलने पर <strong>{'\'Unrestricted / नो रेस्ट्रिक्शन्स / बैटरी छूट\''}</strong> चुनें ताकि सुरक्षा अलार्म 100% समय काम करे।</p>
+                      </div>
+
+                      <div className="flex items-center justify-between p-3.5 bg-slate-900/80 border border-white/5 rounded-2xl">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">अनुमति स्थिति</span>
+                        {nativePermissions.batteryIgnored ? (
+                          <span className="text-[10px] font-black tracking-widest bg-emerald-500/10 border border-emerald-500/30 text-[#00FF88] px-3 py-1 rounded-full flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 bg-[#00FF88] rounded-full animate-ping" />
+                            UNRESTRICTED / सक्रिय
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-black tracking-widest bg-red-500/10 border border-red-500/30 text-red-400 px-3 py-1 rounded-full animate-pulse">
+                            RESTRICTED / बंद
+                          </span>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={async () => {
+                          if (nativePermissions.batteryIgnored) {
+                            setPermissionsActivePage(4);
+                          } else {
+                            if (Capacitor.isNativePlatform()) {
+                              try {
+                                await AlarmService.requestBatteryOptimization();
+                              } catch (e) {
+                                console.error(e);
+                              }
+                            } else {
+                              alert("This option is only available on Mobile APK.");
+                              setPermissionsActivePage(4);
+                            }
+                          }
+                        }}
+                        className={`w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all duration-300 active:scale-95 flex items-center justify-center gap-2 cursor-pointer ${
+                          nativePermissions.batteryIgnored 
+                            ? 'bg-[#00FF88] text-black shadow-[0_4px_20px_rgba(0,255,136,0.25)]' 
+                            : 'bg-amber-500 text-black hover:brightness-110 shadow-[0_4px_20px_rgba(245,158,11,0.3)] hover:shadow-amber-500/40'
+                        }`}
+                      >
+                        {nativePermissions.batteryIgnored ? 'NEXT STEP / आगे बढ़ें ➔' : 'DISABLE SAVER / अभी बंद करें💡'}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* STEP 4: AUTO START ENABLE */}
+                  {permissionsActivePage === 4 && (
+                    <div className="space-y-4">
+                      <div className="flex flex-col items-center text-center gap-2">
+                        <div className="w-16 h-16 bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded-[1.5rem] flex items-center justify-center shadow-[0_0_20px_rgba(168,85,247,0.1)]">
+                          <Power size={32} className="animate-pulse" />
+                        </div>
+                        <h2 className="text-lg font-black text-white px-2 mt-1 leading-snug">
+                          ४. ऑटो-स्टार्ट अनुमति<br />
+                          <span className="text-purple-400 text-xs tracking-wider uppercase font-mono">4. Auto-Start Settings</span>
+                        </h2>
+                      </div>
+
+                      <div className="p-4 bg-slate-900/60 border border-white/5 rounded-2xl space-y-2 text-xs text-slate-300 leading-relaxed text-left font-sans">
+                        <p className="font-semibold text-white">🔄 ब्रांड विशिष्ट सेटिंग्स:</p>
+                        <p>Xiaomi, Redmi, Vivo, Oppo, Realme और Samsung फ़ोन ऑटोमैटिक ऐप्स को बंद कर देते हैं। सेटिंग्स में जाकर <strong>{'\'ऑतो-स्टार्ट / Auto-Start\''}</strong> बटन को अवश्य चालू करें।</p>
+                      </div>
+
+                      <div className="flex items-center justify-between p-3.5 bg-slate-900/80 border border-white/5 rounded-2xl font-sans">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">ऑटो-स्टार्ट स्थिति</span>
+                        {hasAutoStartConfirmed ? (
+                          <span className="text-[10px] font-black tracking-widest bg-emerald-500/10 border border-emerald-500/30 text-[#00FF88] px-3 py-1 rounded-full flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 bg-[#00FF88] rounded-full animate-ping" />
+                            CONFIRMED / सक्रिय (OK)
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-black tracking-widest bg-purple-300/10 border border-purple-500/30 text-[#e0aaff] px-3 py-1 rounded-full animate-pulse">
+                            MANUAL CHECK / सेट करें
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-5 gap-2">
+                        <button
+                          onClick={async () => {
+                            if (Capacitor.isNativePlatform()) {
+                              try {
+                                await AlarmService.openAutoStartSettings();
+                              } catch (e) {
+                                console.error(e);
+                              }
+                            } else {
+                              alert("This option is only available on Mobile APK.");
+                            }
+                            setHasAutoStartConfirmed(true);
+                            localStorage.setItem('hasAutoStartConfirmed', 'true');
+                          }}
+                          className="col-span-3 py-4 bg-purple-600 text-white font-black text-[10px] uppercase tracking-widest rounded-2xl transition-all active:scale-95 flex items-center justify-center gap-1 cursor-pointer shadow-[0_4px_15px_rgba(168,85,247,0.25)]"
+                        >
+                          🔄 OPEN SETTINGS / पेज खोलें
+                        </button>
+                        <button
+                          onClick={() => {
+                            const val = !hasAutoStartConfirmed;
+                            setHasAutoStartConfirmed(val);
+                            localStorage.setItem('hasAutoStartConfirmed', val.toString());
+                          }}
+                          className={`col-span-2 py-4 border rounded-2xl text-[9px] font-black uppercase tracking-wider transition-all active:scale-95 cursor-pointer flex items-center justify-center text-center ${
+                            hasAutoStartConfirmed 
+                              ? 'bg-emerald-500/15 border-emerald-500/30 text-[#00FF88]' 
+                              : 'bg-slate-900 border-white/10 text-slate-400 hover:bg-slate-800'
+                          }`}
+                        >
+                          {hasAutoStartConfirmed ? '✓ CONFIRMED' : 'चालू कर दिया!'}
+                        </button>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          setPermissionsActivePage(5);
+                        }}
+                        className="w-full py-2 bg-white/5 border border-white/5 text-slate-400 hover:bg-white/10 font-black text-[10px] uppercase tracking-widest rounded-xl transition-all text-center leading-none"
+                      >
+                        Skip to Step 5 / आगे बढ़ें ➔
+                      </button>
+                    </div>
+                  )}
+
+                  {/* STEP 5: OVERLAY PERMISSION */}
+                  {permissionsActivePage === 5 && (
+                    <div className="space-y-4">
+                      <div className="flex flex-col items-center text-center gap-2">
+                        <div className="w-16 h-16 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded-[1.5rem] flex items-center justify-center shadow-[0_0_20px_rgba(244,63,94,0.1)]">
+                          <Lock size={32} className="animate-bounce" />
+                        </div>
+                        <h2 className="text-lg font-black text-white px-2 mt-1 leading-snug">
+                          ५. डिस्प्ले ओवर अन्य ऐप्स अनुमति<br />
+                          <span className="text-rose-400 text-xs tracking-wider uppercase font-mono">5. Display Over Other Apps</span>
+                        </h2>
+                      </div>
+
+                      <div className="p-4 bg-slate-900/60 border border-white/5 rounded-2xl space-y-2 text-xs text-slate-300 leading-relaxed text-left">
+                        <p className="font-semibold text-white">📺 ओवरले क्यों आवश्यक है?</p>
+                        <p>स्क्रीन लॉक रहने की स्थिति में जब कोई अलार्म बजेगा, तब इस अनुमति के कारण अलार्म स्क्रीन तुरंत आपके मोबाइल पर सबसे ऊपर प्रदर्शित होकर बजने लगेगी।</p>
+                      </div>
+
+                      <div className="flex items-center justify-between p-3.5 bg-slate-900/80 border border-white/5 rounded-2xl">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">अनुमति स्थिति</span>
+                        {nativePermissions.overlayAllowed ? (
+                          <span className="text-[10px] font-black tracking-widest bg-emerald-500/10 border border-emerald-500/30 text-[#00FF88] px-3 py-1 rounded-full flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 bg-[#00FF88] rounded-full animate-ping" />
+                            ALLOWED / सक्रिय
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-black tracking-widest bg-red-500/10 border border-red-500/30 text-red-400 px-3 py-1 rounded-full animate-pulse">
+                            REQUIRED / आवश्यक
+                          </span>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={async () => {
+                          if (nativePermissions.overlayAllowed) {
+                            // Finish and Activate monitoring
+                            setShowPermissionsModal(false);
+                            localStorage.setItem('permissionReminderDismissed', 'true');
+                            setPermissionReminderDismissed(true);
+                            setIsMonitoring(true);
+                          } else {
+                            if (Capacitor.isNativePlatform()) {
+                              try {
+                                await AlarmService.openOverlaySettings();
+                              } catch (e) {
+                                console.error(e);
+                              }
+                            } else {
+                              alert("This option is only available on Mobile APK.");
+                              setShowPermissionsModal(false);
+                              localStorage.setItem('permissionReminderDismissed', 'true');
+                              setPermissionReminderDismissed(true);
+                              setIsMonitoring(true);
+                            }
+                          }
+                        }}
+                        className={`w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all duration-300 active:scale-95 flex items-center justify-center gap-2 cursor-pointer ${
+                          nativePermissions.overlayAllowed 
+                            ? 'bg-[#00FF88] text-black shadow-[0_4px_20px_rgba(0,255,136,0.25)] font-black' 
+                            : 'bg-rose-500 text-black hover:brightness-110 shadow-[0_4px_20px_rgba(244,63,94,0.3)] hover:shadow-rose-500/40'
+                        }`}
+                      >
+                        {nativePermissions.overlayAllowed ? '⚡ ACTIVATE KAVACH / कवच सक्रिय करें' : 'ALLOW OVERLAY / अभी चालू करें 🎥'}
+                      </button>
+                    </div>
+                  )}
+                </motion.div>
+              </AnimatePresence>
+
+              {/* Back / Next Slider Footer Nav */}
+              <div className="flex justify-between items-center pt-4 border-t border-white/5 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                <button
+                  disabled={permissionsActivePage === 1}
+                  onClick={() => setPermissionsActivePage(p => Math.max(1, p - 1))}
+                  className="px-4 py-2 border border-white/5 rounded-xl bg-slate-900/40 text-slate-400 hover:text-white disabled:opacity-20 disabled:pointer-events-none transition-all flex items-center gap-1 cursor-pointer"
+                >
+                  ◀ Back / पीछे
+                </button>
+                <div className="h-2 w-2 rounded-full bg-white/10 animate-pulse" />
+                <button
+                  disabled={permissionsActivePage === 5}
+                  onClick={() => setPermissionsActivePage(p => Math.min(5, p + 1))}
+                  className="px-4 py-2 border border-[#00FF88]/20 bg-[#00FF88]/5 rounded-xl text-[#00FF88] hover:bg-[#00FF88]/10 disabled:opacity-20 disabled:pointer-events-none transition-all flex items-center gap-1 cursor-pointer"
+                >
+                  Skip / आगे ➔
                 </button>
               </div>
 
@@ -1547,6 +1749,8 @@ function StatusCard({ icon: Icon, label, value, color }: any) {
 function AlarmSettings({ config, setConfig, onBack, t }: any) {
   const [showPicker, setShowPicker] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
+  const [isCapacityDialogOpen, setIsCapacityDialogOpen] = useState(false);
+  const [customCapacityInput, setCustomCapacityInput] = useState('');
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const previewAudioRef = React.useRef<HTMLAudioElement | null>(null);
 
@@ -1799,7 +2003,16 @@ function AlarmSettings({ config, setConfig, onBack, t }: any) {
         <div className="bento-card space-y-4">
           <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-slate-500">
             <span>Battery Size / बैटरी क्षमता</span>
-            <span className="text-accent font-mono font-bold">{config.batteryCapacity || 5000} mAh</span>
+            <button 
+              onClick={() => {
+                setCustomCapacityInput((config.batteryCapacity || 5000).toString());
+                setIsCapacityDialogOpen(true);
+              }}
+              className="px-3 py-1 bg-[#00FF88]/10 border border-[#00FF88]/30 text-[#00FF88] hover:bg-[#00FF88]/20 active:scale-95 text-[10px] font-black font-mono uppercase tracking-widest rounded-lg flex items-center gap-1.5 transition-all shadow-[0_0_10px_rgba(0,255,136,0.05)] cursor-pointer"
+            >
+              <span className="text-white text-xs">{config.batteryCapacity || 5000}</span>
+              <span className="bg-[#00FF88] text-black font-extrabold px-1.5 py-0.5 rounded text-[8px] animate-pulse">SET</span>
+            </button>
           </div>
           <input 
             type="range" 
@@ -1810,7 +2023,7 @@ function AlarmSettings({ config, setConfig, onBack, t }: any) {
             value={config.batteryCapacity || 5000} 
             onChange={e => setConfig({...config, batteryCapacity: parseInt(e.target.value)})} 
           />
-          <p className="text-[9px] text-slate-600 italic">Configure your device battery size to display exact remaining charge in mAh.</p>
+          <p className="text-[9px] text-slate-600 italic">Configure your device battery size to display exact remaining charge. Click SET to enter custom capacity.</p>
         </div>
 
         <SettingsRow icon={Repeat} label={t.continuousLoop} enabled={config.repeat} onToggle={() => setConfig({...config, repeat: !config.repeat})} />
@@ -1836,6 +2049,67 @@ function AlarmSettings({ config, setConfig, onBack, t }: any) {
           </div>
         </div>
       </div>
+
+      {/* Custom Battery Capacity Input Dialog Modal */}
+      <AnimatePresence>
+        {isCapacityDialogOpen && (
+          <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-[120] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="bg-slate-900 border border-white/10 rounded-3xl p-6 w-full max-w-[325px] text-center space-y-5 shadow-2xl shadow-black/90"
+            >
+              <div className="space-y-1">
+                <div className="mx-auto w-12 h-12 bg-[#00FF88]/10 border border-[#00FF88]/20 rounded-2xl flex items-center justify-center text-[#00FF88] mb-2 shadow-[0_0_15px_rgba(0,255,136,0.1)]">
+                  <Zap size={22} className="animate-bounce" />
+                </div>
+                <h3 className="text-sm font-black uppercase tracking-wider text-white">Set Capacity / क्षमता</h3>
+                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest leading-none">Enter Battery Size (mAh)</p>
+              </div>
+
+              <div className="relative">
+                <input 
+                  type="number"
+                  pattern="[0-9]*"
+                  inputMode="numeric"
+                  className="w-full bg-slate-950 border border-white/10 focus:border-[#00FF88] text-center font-mono text-2xl font-black rounded-2xl py-3 text-white placeholder-slate-700 focus:outline-none focus:ring-1 focus:ring-[#00FF88] transition-all"
+                  placeholder="5000"
+                  value={customCapacityInput}
+                  onChange={e => setCustomCapacityInput(e.target.value.replace(/[^0-9]/g, ''))}
+                  autoFocus
+                />
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black uppercase tracking-widest text-slate-500 font-mono">mAh</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCapacityDialogOpen(false)}
+                  className="py-3 bg-white/5 hover:bg-white/10 text-slate-400 font-extrabold text-[10px] uppercase tracking-widest rounded-xl transition-all active:scale-95 border border-white/5 cursor-pointer"
+                >
+                  Cancel / रद्द
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const parsed = parseInt(customCapacityInput);
+                    if (parsed && parsed >= 500 && parsed <= 25000) {
+                      setConfig({ ...config, batteryCapacity: parsed, hasFetchedPhysicalCapacity: true });
+                      setIsCapacityDialogOpen(false);
+                    } else {
+                      alert("Please enter a valid battery size between 500 mAh and 25000 mAh.");
+                    }
+                  }}
+                  className="py-3 bg-[#00FF88] text-black hover:brightness-110 font-extrabold text-[10px] uppercase tracking-widest rounded-xl shadow-[0_3px_15px_rgba(0,255,136,0.25)] transition-all active:scale-95 cursor-pointer"
+                >
+                  OK / सेट करें
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
