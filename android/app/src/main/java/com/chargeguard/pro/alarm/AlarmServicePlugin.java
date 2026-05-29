@@ -261,6 +261,10 @@ public class AlarmServicePlugin extends Plugin {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 intent.setAction(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
                 intent.putExtra(Settings.EXTRA_APP_PACKAGE, context.getPackageName());
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                intent.setAction("android.settings.APP_NOTIFICATION_SETTINGS");
+                intent.putExtra("app_package", context.getPackageName());
+                intent.putExtra("app_uid", context.getApplicationInfo().uid);
             } else {
                 intent.setAction(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
                 intent.setData(Uri.parse("package:" + context.getPackageName()));
@@ -271,13 +275,36 @@ public class AlarmServicePlugin extends Plugin {
             result.put("success", true);
             call.resolve(result);
         } catch (Exception e) {
-            call.reject("Failed to open Notification Settings: " + e.getMessage());
+            // Backup fallback to Application Details view if specialized notifications intent fails on custom OS skins
+            try {
+                Context context = getContext();
+                Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                intent.setData(Uri.parse("package:" + context.getPackageName()));
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(intent);
+                JSObject result = new JSObject();
+                result.put("success", true);
+                call.resolve(result);
+            } catch (Exception ex) {
+                call.reject("Failed to open Notification Settings: " + ex.getMessage());
+            }
         }
     }
 
     @PluginMethod
     public void getBatteryCapacity(PluginCall call) {
         Context context = getContext();
+        
+        // Use SharedPreferences to cache the detected capacity forever to guarantee it NEVER fluctuates
+        android.content.SharedPreferences prefs = context.getSharedPreferences("ChargeGuardPrefs", Context.MODE_PRIVATE);
+        int cachedCapacity = prefs.getInt("detected_battery_capacity", 0);
+        if (cachedCapacity > 0) {
+            JSObject result = new JSObject();
+            result.put("capacity", cachedCapacity);
+            call.resolve(result);
+            return;
+        }
+
         double batteryCapacity = 0.0;
 
         // 1. Try reading standard Android PowerProfile designed battery configuration via reflection
@@ -363,20 +390,27 @@ public class AlarmServicePlugin extends Plugin {
         // Now round it to a solid clean number (like 5000 mAh, 4500 mAh, 6000 mAh etc.)
         int capacityInt = (int) Math.round(batteryCapacity);
 
-        // Normalize typical values if very close (e.g., if 4983 mAh or 5021 mAh represent it perfectly as 5000 mAh)
-        if (capacityInt >= 4800 && capacityInt <= 5100) {
+        // Normalize typical values if very close (e.g., if 4800 to 5200 mAh, represent it perfectly as 5000 mAh)
+        if (capacityInt >= 4750 && capacityInt <= 5250) {
             capacityInt = 5000;
-        } else if (capacityInt >= 4300 && capacityInt <= 4650) {
+        } else if (capacityInt >= 4250 && capacityInt < 4750) {
             capacityInt = 4500;
-        } else if (capacityInt >= 5800 && capacityInt <= 6100) {
+        } else if (capacityInt >= 5750 && capacityInt <= 6250) {
             capacityInt = 6000;
-        } else if (capacityInt >= 3800 && capacityInt <= 4150) {
+        } else if (capacityInt >= 3750 && capacityInt < 4250) {
             capacityInt = 4000;
-        } else if (capacityInt >= 3100 && capacityInt <= 3400) {
+        } else if (capacityInt >= 3250 && capacityInt < 3750) {
             capacityInt = 3300;
-        } else if (capacityInt >= 2800 && capacityInt <= 3099) {
+        } else if (capacityInt >= 2750 && capacityInt < 3250) {
             capacityInt = 3000;
+        } else if (capacityInt >= 6251 && capacityInt < 7500) {
+            capacityInt = 7000;
+        } else if (capacityInt >= 7500 && capacityInt < 9500) {
+            capacityInt = 8000;
         }
+
+        // Cache the value in SharedPreferences so we NEVER recalculate or fluctuate on subsequent calls
+        prefs.edit().putInt("detected_battery_capacity", capacityInt).apply();
 
         JSObject result = new JSObject();
         result.put("capacity", capacityInt);

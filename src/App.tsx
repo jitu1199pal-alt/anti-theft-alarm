@@ -577,19 +577,33 @@ export default function App() {
   // Load real physical device battery capacity if available natively of that specific phone (e.g. 5000 mAh or specific size)
   useEffect(() => {
     const fetchPhysicalBatteryCapacity = async () => {
+      // If we already fetched the physical battery capacity from native, do not overwrite to keep it 100% stable
+      const savedConfig = localStorage.getItem('alarmConfig');
+      if (savedConfig) {
+        try {
+          const parsed = JSON.parse(savedConfig);
+          if (parsed && parsed.hasFetchedPhysicalCapacity) {
+            return; // Already cached, complete early
+          }
+        } catch (e) {
+          console.error("Error reading saved config for battery cache check:", e);
+        }
+      }
+
       if (Capacitor.isNativePlatform()) {
         try {
           const result = await AlarmService.getBatteryCapacity();
           if (result && result.capacity > 0) {
             setAlarmConfig(prev => {
-              if (prev.batteryCapacity !== result.capacity) {
-                return { ...prev, batteryCapacity: result.capacity };
-              }
-              return prev;
+              return {
+                ...prev,
+                batteryCapacity: result.capacity,
+                hasFetchedPhysicalCapacity: true
+              };
             });
           }
         } catch (e) {
-          console.error("Failed to query physical battery capacity:", e);
+          console.error("Failed to query physical battery capacity natively:", e);
         }
       }
     };
@@ -975,7 +989,13 @@ export default function App() {
                   {!hasNotificationPermission && (
                     <button
                       onClick={async () => {
-                        if ('Notification' in window) {
+                        if (Capacitor.isNativePlatform()) {
+                          try {
+                            await AlarmService.openNotificationSettings();
+                          } catch (e) {
+                            console.error("Failed to open native notification settings:", e);
+                          }
+                        } else if ('Notification' in window) {
                           try {
                             const perm = await Notification.requestPermission();
                             if (perm === 'granted') {
