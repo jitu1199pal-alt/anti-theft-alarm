@@ -92,6 +92,7 @@ export default function App() {
   }); 
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [appWasOpenedByUser, setAppWasOpenedByUser] = useState(false);
   const [showTempWarning, setShowTempWarning] = useState(false);
   const [targetReachedAlerted, setTargetReachedAlerted] = useState(false);
   const [alarmReason, setAlarmReason] = useState<'theft' | 'full' | 'low' | 'test' | null>(null);
@@ -317,6 +318,21 @@ export default function App() {
       checkNotificationPermission();
       fetchNativePermissions();
       await syncNativeServiceState();
+      
+      if (Capacitor.isNativePlatform()) {
+        try {
+          const state = await AlarmService.getServiceState() as any;
+          if (!state.isAlarming && !state.alarmReason) {
+            setAppWasOpenedByUser(true);
+          }
+        } catch (e) {
+          console.error("Error setting appWasOpenedByUser on boot:", e);
+          setAppWasOpenedByUser(true);
+        }
+      } else {
+        setAppWasOpenedByUser(true);
+      }
+      
       setIsInitialized(true);
     });
 
@@ -377,6 +393,17 @@ export default function App() {
         CapApp.addListener('appStateChange', async ({ isActive }) => {
           if (isActive) {
             await syncNativeServiceState();
+            try {
+              const state = await AlarmService.getServiceState() as any;
+              if (!state.isAlarming && !state.alarmReason) {
+                setAppWasOpenedByUser(true);
+              }
+            } catch (e) {
+              console.error("Error setting appWasOpenedByUser on state change:", e);
+              setAppWasOpenedByUser(true);
+            }
+          } else {
+            setAppWasOpenedByUser(false);
           }
         });
       }
@@ -835,7 +862,7 @@ export default function App() {
         setScreen(Screen.ADS);
       } else {
         setScreen(Screen.HOME);
-        if (Capacitor.isNativePlatform()) {
+        if (!appWasOpenedByUser && Capacitor.isNativePlatform()) {
           try {
             await AlarmService.minimizeApp();
           } catch (e) {
@@ -848,7 +875,7 @@ export default function App() {
         <GoogleAdScreen 
           onClose={async () => {
             setScreen(Screen.HOME);
-            if (Capacitor.isNativePlatform()) {
+            if (!appWasOpenedByUser && Capacitor.isNativePlatform()) {
               try {
                 await AlarmService.minimizeApp();
               } catch (e) {
