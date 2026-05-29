@@ -248,37 +248,39 @@ export default function App() {
     }
   };
 
+  const syncNativeServiceState = async () => {
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const state = await AlarmService.getServiceState() as any;
+        if (state.running) {
+          setIsMonitoring(true);
+          if (state.targetPercentage) {
+            setAlarmConfig(prev => ({
+              ...prev,
+              targetPercentage: state.targetPercentage,
+              lowBatteryPercentage: state.lowBatteryPercentage ?? prev.lowBatteryPercentage,
+              vibrate: state.vibrate ?? prev.vibrate
+            }));
+          }
+          if (state.isAlarming && state.alarmReason) {
+            setAlarmReason(state.alarmReason as any);
+            setScreen(Screen.LOCK);
+          }
+        } else {
+          setIsMonitoring(false);
+        }
+      } catch (e) {
+        console.error("Error syncing native state:", e);
+      }
+    }
+  };
+
   // Automatically monitor and update permissions & sync native alarm service when user returns to app focus
   useEffect(() => {
     const checkNotificationPermission = () => {
       if (typeof window !== 'undefined' && 'Notification' in window) {
         const isGranted = Notification.permission === 'granted';
         setHasNotificationPermission(isGranted);
-      }
-    };
-
-    const syncNativeServiceState = async () => {
-      if (Capacitor.isNativePlatform()) {
-        try {
-          const state = await AlarmService.getServiceState() as any;
-          if (state.running) {
-            setIsMonitoring(true);
-            if (state.targetPercentage) {
-              setAlarmConfig(prev => ({
-                ...prev,
-                targetPercentage: state.targetPercentage,
-                lowBatteryPercentage: state.lowBatteryPercentage ?? prev.lowBatteryPercentage,
-                vibrate: state.vibrate ?? prev.vibrate
-              }));
-            }
-            if (state.isAlarming && state.alarmReason) {
-              setAlarmReason(state.alarmReason as any);
-              setScreen(Screen.LOCK);
-            }
-          }
-        } catch (e) {
-          console.error("Error syncing native state:", e);
-        }
       }
     };
 
@@ -330,30 +332,6 @@ export default function App() {
 
   // Synchronise native service status in real-time when charging connection changes
   useEffect(() => {
-    const syncNativeServiceState = async () => {
-      if (Capacitor.isNativePlatform()) {
-        try {
-          const state = await AlarmService.getServiceState() as any;
-          if (state.running) {
-            setIsMonitoring(true);
-            if (state.targetPercentage) {
-              setAlarmConfig(prev => ({
-                ...prev,
-                targetPercentage: state.targetPercentage,
-                lowBatteryPercentage: state.lowBatteryPercentage ?? prev.lowBatteryPercentage,
-                vibrate: state.vibrate ?? prev.vibrate
-              }));
-            }
-            if (state.isAlarming && state.alarmReason) {
-              setAlarmReason(state.alarmReason as any);
-              setScreen(Screen.LOCK);
-            }
-          }
-        } catch (e) {
-          console.error("Error syncing native state:", e);
-        }
-      }
-    };
     syncNativeServiceState();
   }, [battery.charging]);
 
@@ -385,8 +363,8 @@ export default function App() {
       }
     });
 
-    // Android Back Button Handling
-    const setupBackButton = async () => {
+    // Android Event Trackers (Back Button and Resume State)
+    const setupNativeListeners = async () => {
       if (Capacitor.isNativePlatform()) {
         CapApp.addListener('backButton', ({ canGoBack }) => {
           if (screen === Screen.HOME || screen === Screen.SPLASH || screen === Screen.LOCK) {
@@ -395,9 +373,15 @@ export default function App() {
             setScreen(Screen.HOME);
           }
         });
+
+        CapApp.addListener('appStateChange', async ({ isActive }) => {
+          if (isActive) {
+            await syncNativeServiceState();
+          }
+        });
       }
     };
-    setupBackButton();
+    setupNativeListeners();
 
     return () => {
       unsubscribe();
