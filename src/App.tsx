@@ -93,6 +93,8 @@ export default function App() {
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [appWasOpenedByUser, setAppWasOpenedByUser] = useState(false);
+  const [adDuration, setAdDuration] = useState<number>(15);
+  const [adKeepAppOpen, setAdKeepAppOpen] = useState<boolean>(false);
   const [showTempWarning, setShowTempWarning] = useState(false);
   const [targetReachedAlerted, setTargetReachedAlerted] = useState(false);
   const [alarmReason, setAlarmReason] = useState<'theft' | 'full' | 'low' | 'test' | null>(null);
@@ -855,10 +857,16 @@ export default function App() {
       case Screen.SECURITY: return <SecurityScreen onBack={() => setScreen(Screen.HOME)} t={t} />;
       case Screen.HISTORY: return <HistoryScreen logs={chargingLogs} setLogs={setChargingLogs} chargingCycles={chargingCycles} onBack={() => setScreen(Screen.HOME)} t={t} />;
       case Screen.HEALTH: return <HealthScreen battery={battery} batteryCapacity={alarmConfig.batteryCapacity || 5000} chargingCycles={chargingCycles} onBack={() => setScreen(Screen.HOME)} t={t} />;
-      case Screen.LOCK: return <AlarmOverlay battery={battery} config={alarmConfig} security={securityConfig} audioContext={mainAudioContext} reason={alarmReason} onStop={async (disarm) => { 
+      case Screen.LOCK: return <AlarmOverlay battery={battery} config={alarmConfig} security={securityConfig} audioContext={mainAudioContext} reason={alarmReason} onStop={async (disarm, openWithAd) => { 
       setTargetReachedAlerted(true);
       setAlarmReason(null);
-      if (disarm) {
+      if (openWithAd) {
+        setAdDuration(30);
+        setAdKeepAppOpen(true);
+        setScreen(Screen.ADS);
+      } else if (disarm) {
+        setAdDuration(15);
+        setAdKeepAppOpen(false);
         setScreen(Screen.ADS);
       } else {
         setScreen(Screen.HOME);
@@ -873,9 +881,10 @@ export default function App() {
     }} t={t} />;
       case Screen.ADS: return (
         <GoogleAdScreen 
+          duration={adDuration}
           onClose={async () => {
             setScreen(Screen.HOME);
-            if (!appWasOpenedByUser && Capacitor.isNativePlatform()) {
+            if (!adKeepAppOpen && !appWasOpenedByUser && Capacitor.isNativePlatform()) {
               try {
                 await AlarmService.minimizeApp();
               } catch (e) {
@@ -1551,8 +1560,12 @@ function NavButton({ icon: Icon, active, onClick }: { icon: any, active: boolean
   );
 }
 
-function GoogleAdScreen({ onClose, t }: { onClose: () => void, t: any }) {
-  const [secondsLeft, setSecondsLeft] = useState(15);
+function GoogleAdScreen({ duration = 15, onClose, t }: { duration?: number, onClose: () => void, t: any }) {
+  const [secondsLeft, setSecondsLeft] = useState(duration);
+
+  useEffect(() => {
+    setSecondsLeft(duration);
+  }, [duration]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -1659,12 +1672,12 @@ function GoogleAdScreen({ onClose, t }: { onClose: () => void, t: any }) {
         <div className="w-full max-w-[340px] h-1.5 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
           <div 
             className="h-full bg-gradient-to-r from-accent to-emerald-400 transition-all duration-1000 ease-linear rounded-full"
-            style={{ width: `${((15 - secondsLeft) / 15) * 100}%` }}
+            style={{ width: `${((duration - secondsLeft) / duration) * 100}%` }}
           />
         </div>
         <div className="flex items-center justify-between w-full max-w-[340px] px-1">
           <p className="text-[9px] text-slate-600 uppercase tracking-widest font-bold">Ad via Google AdSense</p>
-          <p className="text-[9px] text-slate-500 font-medium">Please wait for {secondsLeft}s before returning</p>
+          <p className="text-[9px] text-slate-500 font-medium font-mono">Please wait for {secondsLeft}s before returning</p>
         </div>
       </div>
     </div>
@@ -2833,7 +2846,7 @@ function StatusHealthItem({ label, value, sub }: any) {
   );
 }
 
-function AlarmOverlay({ battery, config, security, audioContext, reason, onStop, t }: { battery: BatteryState, config: AlarmConfig, security: SecurityConfig, audioContext: AudioContext | null, reason: 'theft' | 'full' | 'low' | 'test' | null, onStop: (disarm: boolean) => void, t: any }) {
+function AlarmOverlay({ battery, config, security, audioContext, reason, onStop, t }: { battery: BatteryState, config: AlarmConfig, security: SecurityConfig, audioContext: AudioContext | null, reason: 'theft' | 'full' | 'low' | 'test' | null, onStop: (disarm: boolean, openWithAd?: boolean) => void, t: any }) {
   const [isSwiped, setIsSwiped] = useState(false);
   const [isSnoozed, setIsSnoozed] = useState(false);
 
@@ -3024,6 +3037,19 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
   if (isSnoozed) {
     return (
       <div className="absolute inset-0 bg-slate-950 z-[110] flex flex-col items-center justify-center p-8 space-y-6">
+        {/* 📱 Open APK Button (30s Ad Trigger) */}
+        <div className="absolute top-6 left-0 right-0 px-8 flex justify-center z-[120]">
+          <button 
+            onClick={() => onStop(true, true)}
+            className="w-full max-w-[320px] bg-gradient-to-r from-accent to-emerald-400 text-black font-black uppercase tracking-widest py-3 px-6 rounded-full text-xs shadow-lg shadow-accent/25 transition-all duration-200 hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2 animate-bounce animate-infinite"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+            <span>APK OPEN</span>
+          </button>
+        </div>
+
         <div className="w-20 h-20 bg-slate-900 rounded-full flex items-center justify-center">
           <Moon size={40} className="text-slate-500" />
         </div>
@@ -3045,6 +3071,19 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
       animate={{ opacity: 1 }}
       className="absolute inset-0 bg-slate-950 z-[100] flex flex-col items-center justify-between py-24 px-8"
     >
+      {/* 📱 Open APK Button (30s Ad Trigger) */}
+      <div className="absolute top-6 left-0 right-0 px-8 flex justify-center z-[120]">
+        <button 
+          onClick={() => onStop(true, true)}
+          className="w-full max-w-[320px] bg-gradient-to-r from-accent to-emerald-400 text-black font-black uppercase tracking-widest py-3 px-6 rounded-full text-xs shadow-lg shadow-accent/25 transition-all duration-200 hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2 animate-bounce animate-infinite"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+          </svg>
+          <span>APK OPEN</span>
+        </button>
+      </div>
+
       <div className="text-center space-y-6">
         <motion.div 
           animate={{ scale: [1, 1.2, 1], rotate: [0, 5, -5, 0] }} 
