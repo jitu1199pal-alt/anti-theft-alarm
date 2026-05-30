@@ -2900,8 +2900,12 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
     
     // 1. If it was a theft alarm (unplugged) or low battery, and user PLUGS IT BACK IN, stop alarm
     if (battery.charging && (reason === 'theft' || reason === 'low' || reason === 'test')) {
-       // If plugged back in during these alarms, silence the alarm
-       onStop(false); 
+       // If plugged back in during these alarms, silence the alarm and disarm to run the ads
+       if (reason === 'theft' || reason === 'low') {
+         onStop(true);
+       } else {
+         onStop(false);
+       }
     }
 
     // 2. If it was a goal alarm (charging) and user UNPLUGS IT, stop alarm
