@@ -95,8 +95,11 @@ export default function App() {
   const [appWasOpenedByUser, setAppWasOpenedByUser] = useState(false);
   const [adDuration, setAdDuration] = useState<number>(15);
   const [adKeepAppOpen, setAdKeepAppOpen] = useState<boolean>(false);
+  const [adForceMinimize, setAdForceMinimize] = useState<boolean>(false);
   const [showTempWarning, setShowTempWarning] = useState(false);
   const [targetReachedAlerted, setTargetReachedAlerted] = useState(false);
+  const [lowBatteryAlerted, setLowBatteryAlerted] = useState(false);
+  const [initialLaunchChecksDone, setInitialLaunchChecksDone] = useState(false);
   const [alarmReason, setAlarmReason] = useState<'theft' | 'full' | 'low' | 'test' | null>(null);
   const wakeLockRef = useRef<any>(null);
   const silentAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -174,7 +177,7 @@ export default function App() {
             startLevel: activeSession.startLevel,
             endLevel: currentLevelPct,
             duration: durationSec,
-            type: currentLevelPct >= 95 ? 'full' : 'partial'
+            type: currentLevelPct >= 98 ? 'full' : 'partial'
           };
           setChargingLogs(prev => {
             const next = [newLog, ...prev.filter(l => l.id !== newLog.id)];
@@ -353,12 +356,12 @@ export default function App() {
     syncNativeServiceState();
   }, [battery.charging]);
 
-  // Automatically arm active alarm set to 95% and start monitoring immediately when charger is plugged in (same as clicking "Set Alarm" manually)
+  // Automatically arm active alarm set to 98% and start monitoring immediately when charger is plugged in (same as clicking "Set Alarm" manually)
   useEffect(() => {
     if (battery.charging) {
       setAlarmConfig(prev => {
-        if (prev.targetPercentage !== 95) {
-          return { ...prev, targetPercentage: 95 };
+        if (prev.targetPercentage !== 98) {
+          return { ...prev, targetPercentage: 98 };
         }
         return prev;
       });
@@ -598,7 +601,7 @@ export default function App() {
       }
     }
     return {
-      targetPercentage: 80,
+      targetPercentage: 98,
       lowBatteryPercentage: 20,
       enabled: true,
       sound: AlarmSound.DEFAULT,
@@ -759,9 +762,30 @@ export default function App() {
     }
   }, [screen, permissionReminderDismissed, nativePermissions, hasNotificationPermission]);
 
+  // Initial launch check guard to prevent false alarms on app boot
+  useEffect(() => {
+    if (isInitialized && !initialLaunchChecksDone) {
+      const currentLevelPct = Math.round(battery.level * 100);
+      if (currentLevelPct >= alarmConfig.targetPercentage) {
+        setTargetReachedAlerted(true);
+      }
+      if (currentLevelPct <= alarmConfig.lowBatteryPercentage) {
+        setLowBatteryAlerted(true);
+      }
+      setInitialLaunchChecksDone(true);
+    }
+  }, [isInitialized, battery.level, alarmConfig.targetPercentage, alarmConfig.lowBatteryPercentage, initialLaunchChecksDone]);
+
+  // Reset low battery alerted status when device is connected to a charger
+  useEffect(() => {
+    if (battery.charging) {
+      setLowBatteryAlerted(false);
+    }
+  }, [battery.charging]);
+
   // Alert Monitor Logic
   useEffect(() => {
-    if (!isMonitoring) {
+    if (!isInitialized || !isMonitoring) {
       setWasCharging(battery.charging);
       return;
     }
@@ -782,16 +806,17 @@ export default function App() {
       }
     }
 
-    // 2. Low Battery Alarm (Critical Level)
-    if (currentLevelPct <= alarmConfig.lowBatteryPercentage && !battery.charging) {
+    // 2. Low Battery Alarm (Critical Level) - Rings only once (lowBatteryAlerted is reset on charging)
+    if (currentLevelPct <= alarmConfig.lowBatteryPercentage && !battery.charging && !lowBatteryAlerted) {
       if (screen !== Screen.LOCK) {
+        setLowBatteryAlerted(true);
         setAlarmReason('low');
         setScreen(Screen.LOCK);
       }
     }
 
-    // 3. Theft Alarm (Transition from Charging to Unplugged)
-    if (securityConfig.theftAlarm && wasCharging && !battery.charging) {
+    // 3. Theft Alarm (Transition from Charging to Unplugged and battery is under 98%)
+    if (securityConfig.theftAlarm && wasCharging && !battery.charging && currentLevelPct < 98) {
       if (screen !== Screen.LOCK) {
         setAlarmReason('theft');
         setScreen(Screen.LOCK);
@@ -799,7 +824,7 @@ export default function App() {
     }
 
     setWasCharging(battery.charging);
-  }, [battery.level, battery.charging, isMonitoring, alarmConfig.targetPercentage, alarmConfig.lowBatteryPercentage, securityConfig.theftAlarm, wasCharging, screen]);
+  }, [battery.level, battery.charging, isMonitoring, isInitialized, alarmConfig.targetPercentage, alarmConfig.lowBatteryPercentage, lowBatteryAlerted, securityConfig.theftAlarm, wasCharging, screen]);
 
   const renderScreen = () => {
     // If trial/subscription expired, force subscription screen but let them see referrals
@@ -858,15 +883,26 @@ export default function App() {
       case Screen.HISTORY: return <HistoryScreen logs={chargingLogs} setLogs={setChargingLogs} chargingCycles={chargingCycles} onBack={() => setScreen(Screen.HOME)} t={t} />;
       case Screen.HEALTH: return <HealthScreen battery={battery} batteryCapacity={alarmConfig.batteryCapacity || 5000} chargingCycles={chargingCycles} onBack={() => setScreen(Screen.HOME)} t={t} />;
       case Screen.LOCK: return <AlarmOverlay battery={battery} config={alarmConfig} security={securityConfig} audioContext={mainAudioContext} reason={alarmReason} onStop={async (disarm, openWithAd) => { 
+      const currentReason = alarmReason;
       setTargetReachedAlerted(true);
       setAlarmReason(null);
       if (openWithAd) {
         setAdDuration(30);
         setAdKeepAppOpen(true);
+        setAdForceMinimize(false);
         setScreen(Screen.ADS);
       } else if (disarm) {
-        setAdDuration(15);
+        if (currentReason === 'low') {
+          setAdDuration(5);
+        } else if (currentReason === 'theft') {
+          setAdDuration(10);
+        } else if (currentReason === 'full') {
+          setAdDuration(15);
+        } else {
+          setAdDuration(15);
+        }
         setAdKeepAppOpen(false);
+        setAdForceMinimize(true);
         setScreen(Screen.ADS);
       } else {
         setScreen(Screen.HOME);
@@ -884,7 +920,9 @@ export default function App() {
           duration={adDuration}
           onClose={async () => {
             setScreen(Screen.HOME);
-            if (!adKeepAppOpen && !appWasOpenedByUser && Capacitor.isNativePlatform()) {
+            const shouldMin = adForceMinimize || (!adKeepAppOpen && !appWasOpenedByUser);
+            setAdForceMinimize(false);
+            if (shouldMin && Capacitor.isNativePlatform()) {
               try {
                 await AlarmService.minimizeApp();
               } catch (e) {
@@ -2020,7 +2058,7 @@ function HomeScreen({
            </div>
            
            <div className="grid grid-cols-6 gap-2 mb-4">
-            {[75, 80, 85, 90, 95, 100].map(p => (
+            {[75, 80, 85, 90, 98, 100].map(p => (
                <QuickPreset 
                  key={p} 
                  value={p} 
