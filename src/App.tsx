@@ -602,7 +602,7 @@ export default function App() {
     }
     return {
       targetPercentage: 98,
-      lowBatteryPercentage: 20,
+      lowBatteryPercentage: 18,
       enabled: true,
       sound: AlarmSound.DEFAULT,
       volume: 80,
@@ -807,7 +807,7 @@ export default function App() {
     }
 
     // 2. Low Battery Alarm (Critical Level) - Rings only once (lowBatteryAlerted is reset on charging)
-    if (currentLevelPct <= alarmConfig.lowBatteryPercentage && !battery.charging && !lowBatteryAlerted) {
+    if (currentLevelPct === alarmConfig.lowBatteryPercentage && !battery.charging && !lowBatteryAlerted) {
       if (screen !== Screen.LOCK) {
         setLowBatteryAlerted(true);
         setAlarmReason('low');
