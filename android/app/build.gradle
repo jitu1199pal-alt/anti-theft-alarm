@@ -35,6 +35,7 @@ android {
             if (file("release.keystore").exists()) {
                 signingConfig signingConfigs.release
             }
+            crunchPngs false
         }
     }
 }
