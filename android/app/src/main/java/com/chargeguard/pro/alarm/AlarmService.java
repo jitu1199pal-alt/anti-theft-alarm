@@ -39,6 +39,8 @@ public class AlarmService extends Service {
     private boolean isFirstCheck = true;
     private boolean wasChargingOnStart = false;
     private boolean hadChargerUnplugged = false;
+    private boolean lowBatteryAlerted = false;
+    private boolean targetReachedAlerted = false;
 
     private MediaPlayer mediaPlayer = null;
     private Vibrator vibrator = null;
@@ -101,6 +103,7 @@ public class AlarmService extends Service {
         isAlarmActive = false;
         alarmReason = null;
         hadChargerUnplugged = false;
+        stopAlarmSound();
 
         // Save active monitoring state in SharedPreferences for reboot recovery
         try {
@@ -147,6 +150,22 @@ public class AlarmService extends Service {
             isFirstCheck = false;
         }
 
+        // Handle alerts reset states based on charger status
+        if (isCharging) {
+            wasChargingOnStart = true;
+            lowBatteryAlerted = false; // Reset low battery alerted status when charging
+        } else {
+            targetReachedAlerted = false; // Reset target reached status when charger unplugged
+        }
+
+        // Dynamic thresholds based soft reset states
+        if (percent > lowBatteryPercentage) {
+            lowBatteryAlerted = false; // Reset when battery charges back above low limit
+        }
+        if (percent < targetPercentage) {
+            targetReachedAlerted = false; // Reset when battery drops back below target limit
+        }
+
         if (isAlarmActive) {
             return;
         }
@@ -160,18 +179,20 @@ public class AlarmService extends Service {
 
         // 2. Full Battery Alarm (Goal Reached)
         if (isCharging && percent >= targetPercentage) {
-            triggerAlarm("full", "Battery Charged to " + percent + "%!");
+            if (!targetReachedAlerted) {
+                targetReachedAlerted = true;
+                triggerAlarm("full", "Battery Charged to " + percent + "%!");
+            }
             return;
         }
 
         // 3. Low Battery Alarm (Critical Level)
         if (!isCharging && percent <= lowBatteryPercentage) {
-            triggerAlarm("low", "Battery Critical: " + percent + "%!");
+            if (!lowBatteryAlerted) {
+                lowBatteryAlerted = true;
+                triggerAlarm("low", "Battery Critical: " + percent + "%!");
+            }
             return;
-        }
-
-        if (isCharging) {
-            wasChargingOnStart = true;
         }
     }
 

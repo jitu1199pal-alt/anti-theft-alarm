@@ -777,13 +777,13 @@ export default function App() {
     }
   }, [isInitialized, battery.level, alarmConfig.targetPercentage, alarmConfig.lowBatteryPercentage, initialLaunchChecksDone]);
 
-  // Reset low battery alerted status when battery is charged above lowBatteryPercentage (35%)
+  // Reset low battery alerted status when battery is charged above lowBatteryPercentage (35%) or plugged in
   useEffect(() => {
     const currentLevelPct = Math.round(battery.level * 100);
-    if (currentLevelPct > alarmConfig.lowBatteryPercentage) {
+    if (currentLevelPct > alarmConfig.lowBatteryPercentage || battery.charging) {
       setLowBatteryAlerted(false);
     }
-  }, [battery.level, alarmConfig.lowBatteryPercentage]);
+  }, [battery.level, battery.charging, alarmConfig.lowBatteryPercentage]);
 
   // Alert Monitor Logic
   useEffect(() => {
@@ -809,7 +809,7 @@ export default function App() {
     }
 
     // 2. Low Battery Alarm (Critical Level) - Rings only once (lowBatteryAlerted is reset on charging)
-    if (currentLevelPct === alarmConfig.lowBatteryPercentage && !battery.charging && !lowBatteryAlerted) {
+    if (currentLevelPct <= alarmConfig.lowBatteryPercentage && !battery.charging && !lowBatteryAlerted) {
       if (screen !== Screen.LOCK) {
         setLowBatteryAlerted(true);
         setAlarmReason('low');
