@@ -93,7 +93,7 @@ export default function App() {
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [appWasOpenedByUser, setAppWasOpenedByUser] = useState(false);
-  const [adDuration, setAdDuration] = useState<number>(15);
+  const [adDuration, setAdDuration] = useState<number>(5);
   const [adKeepAppOpen, setAdKeepAppOpen] = useState<boolean>(false);
   const [adForceMinimize, setAdForceMinimize] = useState<boolean>(false);
   const [showTempWarning, setShowTempWarning] = useState(false);
@@ -264,7 +264,7 @@ export default function App() {
             setAlarmConfig(prev => ({
               ...prev,
               targetPercentage: state.targetPercentage,
-              lowBatteryPercentage: state.lowBatteryPercentage ?? prev.lowBatteryPercentage,
+              lowBatteryPercentage: 35, // Force 35% as requested
               vibrate: state.vibrate ?? prev.vibrate
             }));
           }
@@ -594,6 +594,7 @@ export default function App() {
         if (parsed && typeof parsed === 'object') {
           if (!parsed.batteryCapacity) parsed.batteryCapacity = 5000;
           if (parsed.vibrate === undefined) parsed.vibrate = true;
+          parsed.lowBatteryPercentage = 35; // Force low battery alarm to 35% as requested
           return parsed;
         }
       } catch (e) {
@@ -602,7 +603,7 @@ export default function App() {
     }
     return {
       targetPercentage: 98,
-      lowBatteryPercentage: 18,
+      lowBatteryPercentage: 35, // Force 35% as requested
       enabled: true,
       sound: AlarmSound.DEFAULT,
       volume: 80,
@@ -776,12 +777,13 @@ export default function App() {
     }
   }, [isInitialized, battery.level, alarmConfig.targetPercentage, alarmConfig.lowBatteryPercentage, initialLaunchChecksDone]);
 
-  // Reset low battery alerted status when device is connected to a charger
+  // Reset low battery alerted status when battery is charged above lowBatteryPercentage (35%)
   useEffect(() => {
-    if (battery.charging) {
+    const currentLevelPct = Math.round(battery.level * 100);
+    if (currentLevelPct > alarmConfig.lowBatteryPercentage) {
       setLowBatteryAlerted(false);
     }
-  }, [battery.charging]);
+  }, [battery.level, alarmConfig.lowBatteryPercentage]);
 
   // Alert Monitor Logic
   useEffect(() => {
@@ -892,15 +894,15 @@ export default function App() {
         setAdForceMinimize(false);
         setScreen(Screen.ADS);
       } else if (disarm) {
-        if (currentReason === 'low') {
-          setAdDuration(5);
+        let duration = 10;
+        if (currentReason === 'low' || currentReason === 'test') {
+          duration = 5;
         } else if (currentReason === 'theft') {
-          setAdDuration(10);
+          duration = 5;
         } else if (currentReason === 'full') {
-          setAdDuration(15);
-        } else {
-          setAdDuration(15);
+          duration = 10;
         }
+        setAdDuration(duration);
         setAdKeepAppOpen(false);
         setAdForceMinimize(true);
         setScreen(Screen.ADS);
@@ -948,6 +950,29 @@ export default function App() {
           <Shield size={32} className="text-black" />
         </motion.div>
       </div>
+    );
+  }
+
+  if (screen === Screen.ADS) {
+    return (
+      <ErrorBoundary t={t}>
+        <GoogleAdScreen 
+          duration={adDuration}
+          onClose={async () => {
+            setScreen(Screen.HOME);
+            const shouldMin = adForceMinimize || (!adKeepAppOpen && !appWasOpenedByUser);
+            setAdForceMinimize(false);
+            if (shouldMin && Capacitor.isNativePlatform()) {
+              try {
+                await AlarmService.minimizeApp();
+              } catch (e) {
+                console.error("Error minimizing app on ad close:", e);
+              }
+            }
+          }} 
+          t={t} 
+        />
+      </ErrorBoundary>
     );
   }
 
@@ -1535,7 +1560,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Navigation Bar (Mobile Style) */}
-      {screen !== Screen.SPLASH && screen !== Screen.LOCK && screen !== Screen.ADS && (
+      {screen !== Screen.SPLASH && screen !== Screen.LOCK && (
         <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] h-20 neo-blur border-t border-white/5 flex items-center justify-around px-4 pb-4 z-50">
           <NavButton active={screen === Screen.HOME} icon={Battery} onClick={() => setScreen(Screen.HOME)} />
           <NavButton active={screen === Screen.HISTORY} icon={History} onClick={() => setScreen(Screen.HISTORY)} />
@@ -1621,7 +1646,7 @@ function GoogleAdScreen({ duration = 15, onClose, t }: { duration?: number, onCl
   }, [onClose]);
 
   return (
-    <div className="absolute inset-0 bg-slate-950 z-[200] flex flex-col justify-between p-6 select-none text-white font-sans">
+    <div className="fixed inset-0 bg-slate-950 z-[9999] w-screen h-screen flex flex-col justify-between p-6 select-none text-white font-sans animate-fade-in">
       {/* Ad Header */}
       <div className="flex items-center justify-between mt-4">
         <div className="flex items-center gap-1.5 bg-slate-900 px-3 py-1.5 rounded-full border border-slate-800">
@@ -1644,63 +1669,11 @@ function GoogleAdScreen({ duration = 15, onClose, t }: { duration?: number, onCl
         </div>
       </div>
 
-      {/* Ad Body / Canvas Creative */}
-      <div className="flex-1 flex flex-col items-center justify-center my-6 space-y-6">
-        <div className="w-full max-w-[340px] bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 rounded-[2.5rem] p-6 shadow-2xl relative overflow-hidden flex flex-col justify-between h-[420px]">
-          {/* Accent decoration */}
-          <div className="absolute -top-16 -right-16 w-32 h-32 bg-accent/10 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute -bottom-16 -left-16 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
-
-          {/* Ad Label */}
-          <div className="text-center space-y-1 z-10">
-            <span className="text-[9px] uppercase tracking-[0.25em] font-black text-accent">Feature Showcase</span>
-            <h2 className="text-2xl font-black italic uppercase tracking-tight text-white leading-tight">
-              ChargeGuard Pro <span className="text-accent">Premium</span>
-            </h2>
-            <p className="text-[10px] text-slate-400 font-medium">Ultimate Theft Protection & Siren Toolkit</p>
-          </div>
-
-          {/* Core Visual */}
-          <div className="flex flex-col items-center justify-center my-4 space-y-3 z-10">
-            <div className="relative">
-              <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-accent to-blue-500 blur-md opacity-40 animate-pulse" />
-              <div className="w-16 h-16 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-accent shadow-inner relative z-10">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-accent animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                </svg>
-              </div>
-            </div>
-
-            <div className="text-center space-y-1">
-              <div className="bg-slate-950 border border-slate-800/80 px-3 py-1 rounded-full inline-block">
-                <span className="text-[10px] font-black uppercase text-emerald-400 tracking-wider">★ Live Ad Broadcast ★</span>
-              </div>
-              <p className="text-xs text-slate-300 font-semibold px-4 pt-1">
-                "Keep your smartphone 100% safe with 24/7 Background Radar scanning."
-              </p>
-            </div>
-          </div>
-
-          {/* Ad Reviews / Stats */}
-          <div className="flex items-center justify-center gap-6 text-center border-t border-b border-white/[0.04] py-3 z-10 bg-white/[0.01]">
-            <div>
-              <p className="text-xs font-black text-white">4.9 ★★★★★</p>
-              <p className="text-[8px] uppercase tracking-wider text-slate-500 font-bold">App Store Rating</p>
-            </div>
-            <div className="w-[1px] h-6 bg-slate-800" />
-            <div>
-              <p className="text-xs font-black text-white">2.5M+</p>
-              <p className="text-[8px] uppercase tracking-wider text-slate-500 font-bold">Secured Devices</p>
-            </div>
-          </div>
-
-          {/* Ad Call-to-action button */}
-          <button className="w-full bg-accent hover:bg-emphasis text-black font-black uppercase tracking-widest py-3 rounded-full text-xs shadow-lg shadow-accent/25 transition-transform duration-200 active:scale-95 z-10 flex items-center justify-center gap-1.5">
-            <span>Unlock Pro Access</span>
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" />
-            </svg>
-          </button>
+      {/* Ad Body containing responsive Google AdSense element */}
+      <div className="flex-1 flex flex-col items-stretch justify-stretch w-full my-4 px-2">
+        <div className="w-full h-full flex-1 bg-slate-900/40 border border-slate-800/60 rounded-3xl p-4 shadow-2xl relative overflow-hidden flex flex-col justify-center items-center">
+          {/* Real Google AdSense Component slot integration */}
+          <GoogleAdSense slot="5678901234" format="auto" responsive="true" style={{ display: 'block', width: '100%', height: '100%' }} />
         </div>
       </div>
 
@@ -2389,15 +2362,17 @@ function AlarmSettings({ config, setConfig, onBack, t }: any) {
         <div className="bento-card space-y-4">
           <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-slate-500">
             <span>{t.lowBatteryAlert}</span>
-            <span className="text-accent">{config.lowBatteryPercentage}%</span>
+            <span className="text-accent">35% (Fixed)</span>
           </div>
           <input 
             type="range" 
-            className="w-full h-2 accent-accent bg-slate-800 rounded-full appearance-none cursor-pointer" 
-            value={config.lowBatteryPercentage} 
-            onChange={e => setConfig({...config, lowBatteryPercentage: parseInt(e.target.value)})} 
+            min="35"
+            max="35"
+            className="w-full h-2 accent-accent bg-slate-800 rounded-full appearance-none opacity-50 cursor-not-allowed" 
+            value={35} 
+            disabled
           />
-          <p className="text-[9px] text-slate-600 italic">{t.triggerAlarmDischarging}</p>
+          <p className="text-[9px] text-slate-600 italic">This is fixed at 35% as requested.</p>
         </div>
 
         <div className="bento-card space-y-4">
