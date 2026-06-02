@@ -264,7 +264,7 @@ export default function App() {
             setAlarmConfig(prev => ({
               ...prev,
               targetPercentage: state.targetPercentage,
-              lowBatteryPercentage: 35, // Force 35% as requested
+              lowBatteryPercentage: 20, // Force 20% as requested
               vibrate: state.vibrate ?? prev.vibrate
             }));
           }
@@ -594,7 +594,7 @@ export default function App() {
         if (parsed && typeof parsed === 'object') {
           if (!parsed.batteryCapacity) parsed.batteryCapacity = 5000;
           if (parsed.vibrate === undefined) parsed.vibrate = true;
-          parsed.lowBatteryPercentage = 35; // Force low battery alarm to 35% as requested
+          parsed.lowBatteryPercentage = 20; // Force low battery alarm to 20% as requested
           return parsed;
         }
       } catch (e) {
@@ -603,7 +603,7 @@ export default function App() {
     }
     return {
       targetPercentage: 98,
-      lowBatteryPercentage: 35, // Force 35% as requested
+      lowBatteryPercentage: 20, // Force 20% as requested
       enabled: true,
       sound: AlarmSound.DEFAULT,
       volume: 80,
@@ -777,7 +777,7 @@ export default function App() {
     }
   }, [isInitialized, battery.level, alarmConfig.targetPercentage, alarmConfig.lowBatteryPercentage, initialLaunchChecksDone]);
 
-  // Reset low battery alerted status when battery is charged above lowBatteryPercentage (35%) or plugged in
+  // Reset low battery alerted status when battery is charged above lowBatteryPercentage (20%) or plugged in
   useEffect(() => {
     const currentLevelPct = Math.round(battery.level * 100);
     if (currentLevelPct > alarmConfig.lowBatteryPercentage || battery.charging) {
@@ -2362,17 +2362,17 @@ function AlarmSettings({ config, setConfig, onBack, t }: any) {
         <div className="bento-card space-y-4">
           <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-slate-500">
             <span>{t.lowBatteryAlert}</span>
-            <span className="text-accent">35% (Fixed)</span>
+            <span className="text-accent">20% (Fixed)</span>
           </div>
           <input 
             type="range" 
-            min="35"
-            max="35"
+            min="20"
+            max="20"
             className="w-full h-2 accent-accent bg-slate-800 rounded-full appearance-none opacity-50 cursor-not-allowed" 
-            value={35} 
+            value={20} 
             disabled
           />
-          <p className="text-[9px] text-slate-600 italic">This is fixed at 35% as requested.</p>
+          <p className="text-[9px] text-slate-600 italic">This is fixed at 20% as requested.</p>
         </div>
 
         <div className="bento-card space-y-4">
