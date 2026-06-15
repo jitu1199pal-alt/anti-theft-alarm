@@ -25,20 +25,23 @@ try {
 
   let keystorePassword, keyPassword, alias, base64Keystore;
 
-  if (fs.existsSync(jsonDataPath) && fs.existsSync(keystorePath)) {
-    console.log('--- Keystore file and JSON metadata exist! Reusing existing stable credentials to avoid changing signing certificate ---');
+  const appKeystorePath = 'android/app/release.keystore';
+
+  if (fs.existsSync(jsonDataPath)) {
+    console.log('--- Keystore metadata exists! Restoring stable credentials to avoid changing signing certificate ---');
     const existing = JSON.parse(fs.readFileSync(jsonDataPath, 'utf8'));
     alias = existing.ALIAS;
     keystorePassword = existing.KEYSTORE_PASSWORD;
     keyPassword = existing.KEY_PASSWORD;
     base64Keystore = existing.SIGNING_KEY;
     
-    // Ensure the physical release.keystore file exists and matches the Base64 copy
-    const p12Buffer = fs.readFileSync(keystorePath);
-    if (p12Buffer.toString('base64') !== base64Keystore) {
-      console.log('Syncing release.keystore with JSON copy...');
-      fs.writeFileSync(keystorePath, Buffer.from(base64Keystore, 'base64'));
+    // Always sync release.keystore to root and android/app
+    const p12Buffer = Buffer.from(base64Keystore, 'base64');
+    fs.writeFileSync(keystorePath, p12Buffer);
+    if (fs.existsSync('android/app')) {
+      fs.writeFileSync(appKeystorePath, p12Buffer);
     }
+    console.log('Successfully synced release.keystore across paths.');
   } else {
     keystorePassword = generateSecurePassword(16);
     keyPassword = keystorePassword; // Keep same for compatibility / simplicity in signing
@@ -81,7 +84,10 @@ try {
 
     // Write file to filesystem
     fs.writeFileSync(keystorePath, p12Buffer);
-    console.log('Keystore file (.keystore) generated successfully!');
+    if (fs.existsSync('android/app')) {
+      fs.writeFileSync(appKeystorePath, p12Buffer);
+    }
+    console.log('Keystore file (.keystore) generated successfully across paths!');
 
     // Conversion of newly generated keystore to Base64
     base64Keystore = p12Buffer.toString('base64');

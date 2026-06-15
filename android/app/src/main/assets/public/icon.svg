@@ -1,0 +1,201 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Sky background gradient -->
+    <radialGradient id="sky-grad" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="60%" stop-color="#0284c7"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </radialGradient>
+
+    <!-- Pasture hill gradient -->
+    <linearGradient id="hill-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#4ade80"/>
+      <stop offset="100%" stop-color="#15803d"/>
+    </linearGradient>
+
+    <!-- Metallic red bell gradient -->
+    <radialGradient id="bell-grad" cx="40%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#ff8787"/>
+      <stop offset="40%" stop-color="#ef4444"/>
+      <stop offset="90%" stop-color="#b91c1c"/>
+      <stop offset="100%" stop-color="#7f1d1d"/>
+    </radialGradient>
+
+    <!-- Shiny yellow bell crown/clapper -->
+    <linearGradient id="gold-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fef08a"/>
+      <stop offset="50%" stop-color="#eab308"/>
+      <stop offset="100%" stop-color="#a16207"/>
+    </linearGradient>
+
+    <!-- Glass gloss highlight -->
+    <linearGradient id="glass-glare" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.4"/>
+      <stop offset="40%" stop-color="#ffffff" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- Battery level gradient -->
+    <linearGradient id="battery-level-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#a3e635"/>
+      <stop offset="50%" stop-color="#4ade80"/>
+      <stop offset="100%" stop-color="#22c55e"/>
+    </linearGradient>
+
+    <!-- Text fill gradient for "MOBILE CHARGE" -->
+    <linearGradient id="text-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#a3e635"/>
+      <stop offset="50%" stop-color="#facc15"/>
+      <stop offset="100%" stop-color="#f97316"/>
+    </linearGradient>
+
+    <!-- Circular sky area clipping mask -->
+    <clipPath id="sky-clip">
+      <circle cx="256" cy="235" r="150" />
+    </clipPath>
+  </defs>
+
+  <!-- Base outer dark round shield border -->
+  <circle cx="256" cy="235" r="166" fill="#090d16" stroke="#1e293b" stroke-width="4" />
+  
+  <!-- Outer gold-yellow circular border frame -->
+  <circle cx="256" cy="235" r="158" fill="none" stroke="url(#gold-grad)" stroke-width="8" />
+
+  <!-- Sky background inside the golden ring -->
+  <circle cx="256" cy="235" r="150" fill="url(#sky-grad)" />
+
+  <!-- Green pasture rolling hills clipped to circular boundary -->
+  <g clip-path="url(#sky-clip)">
+    <!-- Back hill -->
+    <path d="M 80,270 Q 180,230 280,260 T 430,250 L 430,400 L 80,400 Z" fill="#166534" opacity="0.7"/>
+    <!-- Front main hill -->
+    <path d="M 80,290 Q 230,220 430,290 L 430,400 L 80,400 Z" fill="url(#hill-grad)" stroke="#14532d" stroke-width="3"/>
+  </g>
+
+  <!-- Left Alarm Bell (Ringing out sound lines) -->
+  <!-- Sound rays -->
+  <g stroke="#f97316" stroke-width="5" stroke-linecap="round" fill="none" opacity="0.9">
+    <path d="M 100,105 Q 75,90 55,95" />
+    <path d="M 85,85 Q 65,65 40,80" />
+    <path d="M 115,75 Q 100,45 75,50" />
+  </g>
+
+  <!-- Left Bell Dome -->
+  <g transform="translate(155, 135) rotate(-22)">
+    <rect x="-10" y="-45" width="20" height="12" rx="4" fill="url(#gold-grad)" stroke="#78350f" stroke-width="2"/>
+    <path d="M -40,-15 C -40,-50 40,-50 40,-15 L 45,5 L -45,5 Z" fill="url(#bell-grad)" stroke="#7f1d1d" stroke-width="3"/>
+    <rect x="-50" y="5" width="100" height="10" rx="3" fill="#dc2626" stroke="#7f1d1d" stroke-width="2"/>
+    <!-- Clapper striker -->
+    <circle cx="0" cy="18" r="7" fill="url(#gold-grad)" stroke="#78350f" stroke-width="1.5"/>
+    <path d="M -30,-22 A 32 32 0 0 1 10,-42" stroke="#ffffff" stroke-width="4" stroke-linecap="round" fill="none" opacity="0.4"/>
+  </g>
+
+  <!-- Right Alarm Bell (Ringing out sound lines) -->
+  <!-- Sound rays -->
+  <g stroke="#f97316" stroke-width="5" stroke-linecap="round" fill="none" opacity="0.9">
+    <path d="M 412,105 Q 437,90 457,95" />
+    <path d="M 427,85 Q 447,65 472,80" />
+    <path d="M 397,75 Q 412,45 437,50" />
+  </g>
+
+  <!-- Right Bell Dome -->
+  <g transform="translate(357, 135) rotate(22)">
+    <rect x="-10" y="-45" width="20" height="12" rx="4" fill="url(#gold-grad)" stroke="#78350f" stroke-width="2"/>
+    <path d="M -40,-15 C -40,-50 40,-50 40,-15 L 45,5 L -45,5 Z" fill="url(#bell-grad)" stroke="#7f1d1d" stroke-width="3"/>
+    <rect x="-50" y="5" width="100" height="10" rx="3" fill="#dc2626" stroke="#7f1d1d" stroke-width="2"/>
+    <!-- Clapper striker -->
+    <circle cx="0" cy="18" r="7" fill="url(#gold-grad)" stroke="#78350f" stroke-width="1.5"/>
+    <path d="M -30,-22 A 32 32 0 0 1 10,-42" stroke="#ffffff" stroke-width="4" stroke-linecap="round" fill="none" opacity="0.4"/>
+  </g>
+
+  <!-- Winding Charging Cable Cord -->
+  <!-- In the user image, a green yellow cable runs from the right and plugs into the phone -->
+  <path d="M 256,325 C 256,365 375,350 360,265 C 350,220 300,240 280,245" fill="none" stroke="#4ade80" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 256,325 C 256,365 375,350 360,265 C 350,220 300,240 280,245" fill="none" stroke="#22c55e" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Phone Body Shield (3D gloss bevel effect) -->
+  <rect x="195" y="125" width="122" height="212" rx="20" fill="#0f172a" stroke="#475569" stroke-width="5" />
+  <rect x="200" y="130" width="112" height="202" rx="15" fill="#334155" stroke="#1e293b" stroke-width="2" />
+  
+  <!-- Smartphone Screen -->
+  <rect x="204" y="134" width="104" height="194" rx="12" fill="#090d16" />
+
+  <!-- Top Speaker Notch -->
+  <rect x="238" y="138" width="36" height="5" rx="2" fill="#1e293b"/>
+
+  <!-- Glowing Green Active Battery Container inside screen -->
+  <!-- Battery Cap -->
+  <rect x="244" y="171" width="24" height="8" rx="2" fill="#4ade80" />
+  <!-- Battery Frame -->
+  <rect x="219" y="177" width="74" height="124" rx="10" stroke="#4ade80" stroke-width="4" fill="#022c22" />
+
+  <!-- Glowing green segmented interior level bars -->
+  <g fill="url(#battery-level-grad)">
+    <rect x="225" y="183" width="62" height="18" rx="3" />
+    <rect x="225" y="205" width="62" height="18" rx="3" />
+    <rect x="225" y="227" width="62" height="18" rx="3" />
+    <rect x="225" y="249" width="62" height="18" rx="3" />
+    <rect x="225" y="271" width="62" height="18" rx="3" />
+  </g>
+
+  <!-- Big energy lightning bolt in yellow in center of battery -->
+  <polygon points="256,192 238,242 251,242 245,282 274,230 260,230" fill="#facc15" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"/>
+
+  <!-- Cable plug connector into base of phone -->
+  <g transform="translate(256, 332)">
+    <rect x="-12" y="-5" width="24" height="16" rx="4" fill="#ffffff" stroke="#94a3b8" stroke-width="2"/>
+    <!-- Small green lightning bolt on the charging connector plug -->
+    <polygon points="1,-1 -3,4 0,4 -1,9 5,3 2,3" fill="#22c55e" />
+  </g>
+
+  <!-- Gloss reflection overlay across the phone screen -->
+  <path d="M 204,134 L 260,134 L 204,310 Z" fill="url(#glass-glare)" pointer-events="none" />
+
+  <!-- Warning Red Triangle Badge at Bottom Left of phone -->
+  <g transform="translate(170, 312)">
+    <polygon points="0,-28 26,18 -26,18" fill="#ef4444" stroke="#ffffff" stroke-width="3" stroke-linejoin="round"/>
+    <polygon points="0,-28 26,18 -26,18" fill="#ef4444" stroke="#7f1d1d" stroke-width="1" stroke-linejoin="round"/>
+    <!-- Bold white Exclamation point -->
+    <rect x="-3" y="-12" width="6" height="15" rx="2.5" fill="#ffffff"/>
+    <circle cx="0" cy="10" r="3.5" fill="#ffffff"/>
+  </g>
+
+  <!-- Large Stylized Lower Text Badge/Banner -->
+  <!-- Outer decorative wings -->
+  <path d="M 40,385 L 120,385 L 120,440 L 50,430 Z" fill="#090d16" stroke="#1e293b" stroke-width="3" />
+  <path d="M 472,385 L 392,385 L 392,440 L 462,430 Z" fill="#090d16" stroke="#1e293b" stroke-width="3" />
+
+  <!-- Main Dark Shield Badge Plate -->
+  <path d="M 68,365 Q 256,350 444,365 L 424,420 Q 256,435 88,420 Z" fill="#111827" stroke="url(#gold-grad)" stroke-width="4" stroke-linejoin="round" />
+  
+  <!-- "MOBILE CHARGE" Title Text -->
+  <text x="256" y="398" 
+        font-family="System-UI, -apple-system, sans-serif" 
+        font-size="34" 
+        font-weight="900" 
+        letter-spacing="1"
+        fill="url(#text-grad)" 
+        stroke="#000000" 
+        stroke-width="1.5"
+        text-anchor="middle"
+        style="paint-order: stroke fill; font-style: italic;">
+    MOBILE CHARGE
+  </text>
+
+  <!-- Lower "ALARM" ribbon plate -->
+  <path d="M 140,422 Q 256,416 372,422 L 356,456 Q 256,448 156,456 Z" fill="#1e293b" stroke="#334155" stroke-width="2" />
+  <circle cx="160" cy="439" r="3" fill="#94a3b8" />
+  <circle cx="352" cy="439" r="3" fill="#94a3b8" />
+
+  <!-- "ALARM" Subtext -->
+  <text x="256" y="446" 
+        font-family="System-UI, -apple-system, sans-serif" 
+        font-size="22" 
+        font-weight="800" 
+        letter-spacing="4"
+        fill="#ffffff" 
+        text-anchor="middle"
+        style="paint-order: stroke fill;">
+    ALARM
+  </text>
+</svg>

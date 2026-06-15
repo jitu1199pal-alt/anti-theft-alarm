@@ -8,13 +8,13 @@
   "theme_color": "#00FF88",
   "icons": [
     {
-      "src": "https://api.dicebear.com/7.x/shapes/svg?seed=alarm&backgroundColor=00ff88",
+      "src": "/icon.svg",
       "sizes": "192x192",
       "type": "image/svg+xml",
       "purpose": "any maskable"
     },
     {
-      "src": "https://api.dicebear.com/7.x/shapes/svg?seed=alarm&backgroundColor=00ff88",
+      "src": "/icon.svg",
       "sizes": "512x512",
       "type": "image/svg+xml",
       "purpose": "any maskable"
