@@ -1561,7 +1561,10 @@ export default function App() {
 
       {/* Navigation Bar (Mobile Style) */}
       {screen !== Screen.SPLASH && screen !== Screen.LOCK && (
-        <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] h-20 neo-blur border-t border-white/5 flex items-center justify-around px-4 pb-4 z-50">
+        <div className={cn(
+          "fixed left-1/2 -translate-x-1/2 w-full max-w-[480px] h-20 neo-blur border-t border-white/5 flex items-center justify-around px-4 pb-4 z-50 transition-all duration-300",
+          Capacitor.isNativePlatform() ? "bottom-[50px] pb-3" : "bottom-0"
+        )}>
           <NavButton active={screen === Screen.HOME} icon={Battery} onClick={() => setScreen(Screen.HOME)} />
           <NavButton active={screen === Screen.HISTORY} icon={History} onClick={() => setScreen(Screen.HISTORY)} />
           <NavButton active={screen === Screen.HEALTH} icon={Activity} onClick={() => setScreen(Screen.HEALTH)} />
@@ -3088,20 +3091,7 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
       animate={{ opacity: 1 }}
       className="absolute inset-0 bg-slate-950 z-[100] flex flex-col items-center justify-between py-24 px-8"
     >
-      {/* 📱 Open APK Button (30s Ad Trigger) */}
-      <div className="absolute top-6 left-0 right-0 px-8 flex justify-center z-[120]">
-        <button 
-          onClick={() => onStop(true, true)}
-          className="w-full max-w-[320px] bg-gradient-to-r from-accent to-emerald-400 text-black font-black uppercase tracking-widest py-3 px-6 rounded-full text-xs shadow-lg shadow-accent/25 transition-all duration-200 hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2 animate-bounce animate-infinite"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-          </svg>
-          <span>APK OPEN</span>
-        </button>
-      </div>
-
-      <div className="text-center space-y-6">
+      <div className="text-center space-y-6 w-full flex flex-col items-center">
         <motion.div 
           animate={{ scale: [1, 1.2, 1], rotate: [0, 5, -5, 0] }} 
           transition={{ repeat: Infinity, duration: 1.5 }}
@@ -3124,7 +3114,18 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
           )}
         </div>
         
-        <div className="pt-8 text-center">
+        <div className="pt-8 text-center flex flex-col items-center w-full">
+          {/* 📱 Open APK Button (Ad Trigger) placed just above the percentage */}
+          <button 
+            onClick={() => onStop(true, true)}
+            className="mb-6 w-full max-w-[280px] bg-gradient-to-r from-accent to-emerald-400 text-black font-black uppercase tracking-widest py-3.5 px-6 rounded-full text-xs shadow-lg shadow-accent/25 transition-all duration-200 hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2 animate-bounce animate-infinite cursor-pointer"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+            <span>APK OPEN</span>
+          </button>
+
           <p className="text-7xl font-black text-white tracking-tighter">{Math.round(battery.level * 100)}<span className="text-2xl text-slate-500">%</span></p>
           <div className="flex items-center justify-center gap-2 mt-4 bg-white/5 border border-white/10 px-4 py-2 rounded-2xl">
              <div className="w-2 h-2 rounded-full bg-red-500 animate-ping"></div>
