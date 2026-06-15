@@ -105,20 +105,27 @@ export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({
               }
             }
 
-            // Choose banner test ID based on platform
-            const testAdId = Capacitor.getPlatform() === 'ios'
-              ? 'ca-app-pub-3940256099942544/2934735716'
-              : 'ca-app-pub-3940256099942544/6300978111';
+            // Use slot as the real Ad ID if it looks like a valid AdMob Banner Unit ID (ca-app-pub-xxxxxxxx/xxxxxxxxx)
+            // Otherwise, fallback to the official AdMob test banners.
+            const isRealAdId = slot && slot.startsWith('ca-app-pub-');
+            const finalAdId = isRealAdId 
+              ? slot 
+              : (Capacitor.getPlatform() === 'ios'
+                  ? 'ca-app-pub-3940256099942544/2934735716'
+                  : 'ca-app-pub-3940256099942544/6300978111');
+
+            // Set isTesting to false only when using a real production Ad ID
+            const isTestingAd = !isRealAdId || slot.includes('3940256099942544');
 
             try {
               await AdMob.showBanner({
-                adId: testAdId,
+                adId: finalAdId,
                 adSize: BannerAdSize?.BANNER || 'BANNER',
                 position: BannerAdPosition?.TOP_CENTER || 'TOP_CENTER',
                 margin: 0,
-                isTesting: true,
+                isTesting: isTestingAd,
               });
-              console.log("Capacitor Native AdMob Banner active.");
+              console.log(`Capacitor Native AdMob Banner active (ID: ${finalAdId}, testing: ${isTestingAd}).`);
             } catch (showErr) {
               console.warn("Failed to show native AdMob banner overlay:", showErr);
             }
