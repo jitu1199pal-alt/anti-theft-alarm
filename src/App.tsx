@@ -889,7 +889,7 @@ export default function App() {
       setTargetReachedAlerted(true);
       setAlarmReason(null);
       if (openWithAd) {
-        setAdDuration(30);
+        setAdDuration(5);
         setAdKeepAppOpen(true);
         setAdForceMinimize(false);
         setScreen(Screen.ADS);

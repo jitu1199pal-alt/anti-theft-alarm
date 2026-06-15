@@ -28,6 +28,22 @@ interface GoogleAdSenseProps {
 }
 
 let isAdMobInitialized = false;
+let activeMounts = 0;
+
+// Mutex / Queue to serialize physical AdMob calls
+// This guarantees that showBanner / removeBanner calls run sequentially and have no native-code race conditions
+class AdMobMutex {
+  private queue: Promise<any> = Promise.resolve();
+
+  async run<T>(op: () => Promise<T>): Promise<T | undefined> {
+    const next = this.queue.then(op).catch((err) => {
+      console.warn("Error in AdMob synchronized sequence:", err);
+    });
+    this.queue = next;
+    return next;
+  }
+}
+const admobMutex = new AdMobMutex();
 
 export const GoogleAdSense: React.FC<GoogleAdSenseProps> = ({ 
   slot, 
@@ -67,38 +83,55 @@ export const GoogleAdSense: React.FC<GoogleAdSenseProps> = ({
         if (!active) return;
         setAdmobLoaded(true);
 
-        // Initialize AdMob if not done yet
-        if (!isAdMobInitialized) {
-          await AdMob.initialize({
-            requestTrackingAuthorization: true,
-            initializeForTesting: true, // Sets up google development test devices
-          });
-          isAdMobInitialized = true;
-          console.log("Capacitor AdMob SDK initialized successfully.");
-        }
+        // Run show-banner logic through mutally-exclusive queue
+        await admobMutex.run(async () => {
+          if (!active) return;
 
-        if (!active) return;
+          activeMounts++;
 
-        // Choose banner test ID based on platform
-        // Test IDs from Google AdMob official docs
-        const testAdId = Capacitor.getPlatform() === 'ios'
-          ? 'ca-app-pub-3940256099942544/2934735716'
-          : 'ca-app-pub-3940256099942544/6300978111';
+          // Only perform physical native show on the first mount
+          if (activeMounts === 1) {
+            // Initialize AdMob if not done yet
+            if (!isAdMobInitialized) {
+              try {
+                await AdMob.initialize({
+                  requestTrackingAuthorization: true,
+                  initializeForTesting: true, // Sets up google development test devices
+                });
+                isAdMobInitialized = true;
+                console.log("Capacitor AdMob SDK initialized successfully.");
+              } catch (initErr) {
+                console.error("AdMob Initialization failed:", initErr);
+              }
+            }
 
-        await AdMob.showBanner({
-          adId: testAdId,
-          adSize: BannerAdSize?.BANNER || 'BANNER',
-          position: BannerAdPosition?.BOTTOM_CENTER || 'BOTTOM_CENTER',
-          margin: 0,
-          isTesting: true,
+            // Choose banner test ID based on platform
+            const testAdId = Capacitor.getPlatform() === 'ios'
+              ? 'ca-app-pub-3940256099942544/2934735716'
+              : 'ca-app-pub-3940256099942544/6300978111';
+
+            try {
+              await AdMob.showBanner({
+                adId: testAdId,
+                adSize: BannerAdSize?.BANNER || 'BANNER',
+                position: BannerAdPosition?.BOTTOM_CENTER || 'BOTTOM_CENTER',
+                margin: 0,
+                isTesting: true,
+              });
+              console.log("Capacitor Native AdMob Banner active.");
+            } catch (showErr) {
+              console.warn("Failed to show native AdMob banner overlay:", showErr);
+            }
+          } else {
+            console.log(`AdMob Banner is already active globally (mounts: ${activeMounts}). Skipping duplicated creation.`);
+          }
         });
 
         if (active) {
           setAdmobActive(true);
         }
-        console.log("Capacitor Native AdMob Banner active.");
       } catch (err) {
-        console.warn("Failed to show native AdMob banner, falling back back to design:", err);
+        console.warn("Failed to setup native AdMob wrapper:", err);
       }
     };
 
@@ -109,14 +142,25 @@ export const GoogleAdSense: React.FC<GoogleAdSenseProps> = ({
       active = false;
       if (isNative) {
         const tearDownBanner = async () => {
-          try {
-            if (AdMob) {
-              await AdMob.removeBanner();
-              console.log("Capacitor Native AdMob Banner removed.");
+          await admobMutex.run(async () => {
+            if (activeMounts > 0) {
+              activeMounts--;
             }
-          } catch (err) {
-            console.warn("Error removing native banner on unmount:", err);
-          }
+
+            // Only remove the banner native ad when ALL components unmount
+            if (activeMounts === 0) {
+              try {
+                if (AdMob) {
+                  await AdMob.removeBanner();
+                  console.log("Capacitor Native AdMob Banner removed.");
+                }
+              } catch (err) {
+                console.warn("Error removing native banner on unmount:", err);
+              }
+            } else {
+              console.log(`Keeping AdMob Banner active for other active views (mounts: ${activeMounts}).`);
+            }
+          });
         };
         tearDownBanner();
       }
