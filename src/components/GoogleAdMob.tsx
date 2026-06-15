@@ -20,7 +20,7 @@ try {
   console.warn("Dynamic import of @capacitor-community/admob failed", e);
 }
 
-interface GoogleAdSenseProps {
+interface GoogleAdMobProps {
   slot: string;
   format?: 'auto' | 'fluid';
   responsive?: 'true' | 'false';
@@ -45,7 +45,7 @@ class AdMobMutex {
 }
 const admobMutex = new AdMobMutex();
 
-export const GoogleAdSense: React.FC<GoogleAdSenseProps> = ({ 
+export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({ 
   slot, 
   format = 'auto', 
   responsive = 'true',
@@ -59,7 +59,7 @@ export const GoogleAdSense: React.FC<GoogleAdSenseProps> = ({
     let active = true;
 
     if (!isNative) {
-      // In web preview, initialize the fallback web AdSense object safely
+      // In web preview, initialize the fallback web preview object safely
       try {
         // @ts-ignore
         (window.adsbygoogle = window.adsbygoogle || []).push({});

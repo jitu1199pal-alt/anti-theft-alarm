@@ -69,7 +69,7 @@ import { translations } from './translations';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { GoogleAdSense } from './components/GoogleAdSense';
+import { GoogleAdMob } from './components/GoogleAdMob';
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>(Screen.SPLASH);
@@ -1653,7 +1653,7 @@ function GoogleAdScreen({ duration = 15, onClose, t }: { duration?: number, onCl
           <div className="w-1.5 h-1.5 bg-yellow-500 rounded-full animate-pulse" />
           <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400">Ad</span>
           <span className="text-[9px] text-slate-500">•</span>
-          <span className="text-[9px] text-slate-400 font-bold">Google AdSense</span>
+          <span className="text-[9px] text-slate-400 font-bold">Google AdMob</span>
         </div>
 
         <div className="flex items-center gap-2">
@@ -1669,11 +1669,11 @@ function GoogleAdScreen({ duration = 15, onClose, t }: { duration?: number, onCl
         </div>
       </div>
 
-      {/* Ad Body containing responsive Google AdSense element */}
+      {/* Ad Body containing responsive Google AdMob element */}
       <div className="flex-1 flex flex-col items-stretch justify-stretch w-full my-4 px-2">
         <div className="w-full h-full flex-1 bg-slate-900/40 border border-slate-800/60 rounded-3xl p-4 shadow-2xl relative overflow-hidden flex flex-col justify-center items-center">
-          {/* Real Google AdSense Component slot integration */}
-          <GoogleAdSense slot="5678901234" format="auto" responsive="true" style={{ display: 'block', width: '100%', height: '100%' }} />
+          {/* Real Google AdMob Component slot integration */}
+          <GoogleAdMob slot="5678901234" format="auto" responsive="true" style={{ display: 'block', width: '100%', height: '100%' }} />
         </div>
       </div>
 
@@ -1687,7 +1687,7 @@ function GoogleAdScreen({ duration = 15, onClose, t }: { duration?: number, onCl
           />
         </div>
         <div className="flex items-center justify-between w-full max-w-[340px] px-1">
-          <p className="text-[9px] text-slate-600 uppercase tracking-widest font-bold">Ad via Google AdSense</p>
+          <p className="text-[9px] text-slate-600 uppercase tracking-widest font-bold">Ad via Google AdMob</p>
           <p className="text-[9px] text-slate-500 font-medium font-mono">Please wait for {secondsLeft}s before returning</p>
         </div>
       </div>
@@ -2055,9 +2055,9 @@ function HomeScreen({
            </div>
         </div>
  
-        {/* AdSense (Moved from Top) */}
+        {/* AdMob (Moved from Top) */}
         <div className="col-span-12 mt-2">
-          <GoogleAdSense slot="1234567890" />
+          <GoogleAdMob slot="1234567890" />
         </div>
  
         {/* Master Toggle */}
@@ -2574,7 +2574,7 @@ function SecurityScreen({ onBack, t }: any) {
           </div>
         </div>
 
-        <GoogleAdSense slot="3456789012" />
+        <GoogleAdMob slot="3456789012" />
       </div>
 
       {/* Modern sliding overlay modal for on-device privacy readability */}
@@ -2719,7 +2719,7 @@ function HistoryScreen({ logs, setLogs, chargingCycles, onBack, t }: any) {
         )}
       </div>
 
-      <GoogleAdSense slot="4567890123" />
+      <GoogleAdMob slot="4567890123" />
     </motion.div>
   );
 }
@@ -2793,7 +2793,7 @@ function HealthScreen({ battery, batteryCapacity, chargingCycles, onBack, t }: a
         </div>
       </div>
 
-      <GoogleAdSense slot="7890123456" />
+      <GoogleAdMob slot="7890123456" />
     </motion.div>
   );
 }
