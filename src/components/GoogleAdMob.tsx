@@ -114,7 +114,7 @@ export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({
               await AdMob.showBanner({
                 adId: testAdId,
                 adSize: BannerAdSize?.BANNER || 'BANNER',
-                position: BannerAdPosition?.BOTTOM_CENTER || 'BOTTOM_CENTER',
+                position: BannerAdPosition?.TOP_CENTER || 'TOP_CENTER',
                 margin: 0,
                 isTesting: true,
               });

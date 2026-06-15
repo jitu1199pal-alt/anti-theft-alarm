@@ -981,7 +981,8 @@ export default function App() {
       <div className={cn(
         "relative h-screen w-full max-w-[480px] mx-auto overflow-y-auto transition-colors duration-1000",
         theme === 'dark' ? "bg-black text-white" : "bg-slate-50 text-slate-900",
-        theme === 'neon' && "bg-[#0b0c10] text-[#66fcf1]"
+        theme === 'neon' && "bg-[#0b0c10] text-[#66fcf1]",
+        Capacitor.isNativePlatform() && screen !== Screen.SPLASH && screen !== Screen.LOCK && screen !== Screen.ADS ? "pt-[60px]" : ""
       )}>
       {/* Dynamic Background Gradient */}
       <div className={cn(
@@ -1563,7 +1564,7 @@ export default function App() {
       {screen !== Screen.SPLASH && screen !== Screen.LOCK && (
         <div className={cn(
           "fixed left-1/2 -translate-x-1/2 w-full max-w-[480px] h-20 neo-blur border-t border-white/5 flex items-center justify-around px-4 pb-4 z-50 transition-all duration-300",
-          Capacitor.isNativePlatform() ? "bottom-[50px] pb-3" : "bottom-0"
+          "bottom-0"
         )}>
           <NavButton active={screen === Screen.HOME} icon={Battery} onClick={() => setScreen(Screen.HOME)} />
           <NavButton active={screen === Screen.HISTORY} icon={History} onClick={() => setScreen(Screen.HISTORY)} />
