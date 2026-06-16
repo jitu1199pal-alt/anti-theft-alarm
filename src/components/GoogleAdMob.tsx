@@ -122,7 +122,7 @@ export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({
                   adId: testAdId,
                   adSize: BannerAdSize?.BANNER || 'BANNER',
                   position: BannerAdPosition?.BOTTOM_CENTER || 'BOTTOM_CENTER',
-                  margin: 0,
+                  margin: 50,
                   isTesting: true,
                 });
                 lastAdId = testAdId;
@@ -185,7 +185,7 @@ export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({
               adId: finalAdId,
               adSize: BannerAdSize?.BANNER || 'BANNER',
               position: BannerAdPosition?.BOTTOM_CENTER || 'BOTTOM_CENTER',
-              margin: 0,
+              margin: 50,
               isTesting: isTestingAd,
             });
             isBannerActive = true;
