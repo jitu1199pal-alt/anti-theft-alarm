@@ -100,6 +100,18 @@ export async function preloadAdMobInterstitial() {
   if (!Capacitor.isNativePlatform()) return;
   try {
     const { AdMob } = await import('@capacitor-community/admob');
+    
+    // Explicitly initialize AdMob first to prevent any "not initialized" error or silent failure
+    try {
+      await (AdMob as any).initialize({
+        requestTrackingAuthorization: true,
+        initializeForTesting: false,
+      });
+      console.log("AdMob: Initialized background engine for preload successfully.");
+    } catch (initErr) {
+      console.log("AdMob: Already initialized background engine or failed silently:", initErr);
+    }
+
     const finalAdId = getAdUnitId('interstitial');
 
     console.log(`AdMob: Preloading Interstitial ad (ID: ${finalAdId}) in background to guarantee instant display...`);
@@ -2386,6 +2398,12 @@ function AlarmSettings({ config, setConfig, onBack, t }: any) {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const previewAudioRef = React.useRef<HTMLAudioElement | null>(null);
 
+  useEffect(() => {
+    // Eagerly preload interstitial on settings screen mount, so that if the user picks a song,
+    // the ad is already pre-warmed, preloaded and displays instantly!
+    preloadAdMobInterstitial();
+  }, []);
+
   const triggerFileSelectionWithAd = async () => {
     if (!Capacitor.isNativePlatform()) {
       // Direct pass-through if running in a standard web browser context
@@ -2412,6 +2430,16 @@ function AlarmSettings({ config, setConfig, onBack, t }: any) {
 
     try {
       const { AdMob } = await import('@capacitor-community/admob');
+      
+      try {
+        await (AdMob as any).initialize({
+          requestTrackingAuthorization: true,
+          initializeForTesting: false,
+        });
+      } catch (initErr) {
+        console.log("AdMob Settings Picker: Already initialized or failed silently:", initErr);
+      }
+
       const finalAdId = getAdUnitId('interstitial');
 
       // 1. Setup event listeners inside the controller
@@ -3171,6 +3199,12 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
   useEffect(() => {
     onStopRef.current = onStop;
   }, [onStop]);
+
+  useEffect(() => {
+    // Eagerly preload the interstitial in background as soon as the alarm sounds / screen locks,
+    // so it is fully cached and ready when the user subsequently stops/disarms the alarm!
+    preloadAdMobInterstitial();
+  }, []);
 
   const handleSnooze = () => {
     setIsSnoozed(true);
