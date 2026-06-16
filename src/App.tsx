@@ -2383,6 +2383,63 @@ function AlarmSettings({ config, setConfig, onBack, t }: any) {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const previewAudioRef = React.useRef<HTMLAudioElement | null>(null);
 
+  const triggerFileSelectionWithAd = async () => {
+    if (!Capacitor.isNativePlatform()) {
+      // Direct pass-through if running in a standard web browser context
+      fileInputRef.current?.click();
+      return;
+    }
+
+    let dismissedSub: any = null;
+    let failedSub: any = null;
+
+    const cleanupListeners = () => {
+      try {
+        if (dismissedSub) dismissedSub.remove();
+        if (failedSub) failedSub.remove();
+      } catch (e) {
+        console.warn("Error removing AdMob listeners in settings dialog:", e);
+      }
+    };
+
+    const proceedWithFilePicker = () => {
+      cleanupListeners();
+      fileInputRef.current?.click();
+    };
+
+    try {
+      const { AdMob } = await import('@capacitor-community/admob');
+      const finalAdId = getAdUnitId('interstitial');
+
+      // 1. Setup event listeners inside the controller
+      dismissedSub = await (AdMob.addListener as any)('interstitialAdDismissed', () => {
+        console.log("AdMob Settings Picker: Interstitial ad closed by the user.");
+        proceedWithFilePicker();
+      });
+
+      failedSub = await (AdMob.addListener as any)('interstitialAdFailedToShow', (info: any) => {
+        console.warn("AdMob Settings Picker: Interstitial failed to show:", info);
+        proceedWithFilePicker();
+      });
+
+      // 2. Try instantly showing cached interstitial or dynamically initialize and show
+      try {
+        await AdMob.showInterstitial();
+        console.log("AdMob Settings Picker: Presented cached interstitial.");
+      } catch (showErr) {
+        console.log("AdMob Settings Picker: Preloaded interstitial was empty or expired. Initializing a fresh one...", showErr);
+        await AdMob.prepareInterstitial({
+          adId: finalAdId,
+        });
+        await AdMob.showInterstitial();
+        console.log("AdMob Settings Picker: Interstitial presented successfully.");
+      }
+    } catch (err) {
+      console.warn("Failed to present AdMob interstitial in settings. Directly opening file picker fallback:", err);
+      proceedWithFilePicker();
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -2525,7 +2582,7 @@ function AlarmSettings({ config, setConfig, onBack, t }: any) {
               </div>
             </div>
             <button 
-              onClick={() => fileInputRef.current?.click()}
+              onClick={triggerFileSelectionWithAd}
               className="px-6 py-2 bg-accent text-black text-[10px] font-bold uppercase tracking-widest rounded-full accent-glow"
             >
               {config.sound === 'Custom' ? t.changeSong : t.pickSong}
@@ -2567,7 +2624,7 @@ function AlarmSettings({ config, setConfig, onBack, t }: any) {
                   <div className="h-px bg-slate-800 my-1 mx-2" />
                   
                   <button 
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={triggerFileSelectionWithAd}
                     className={cn(
                       "flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 transition-all text-left",
                       config.sound === 'Custom' ? "bg-accent/10 text-accent" : "text-slate-400"
