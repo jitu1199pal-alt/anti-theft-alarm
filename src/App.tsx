@@ -78,8 +78,8 @@ import { GoogleAdMob } from './components/GoogleAdMob';
 export const AD_CONFIG = {
   // 1. Android Ad Unit IDs (These will activate when running on Android Device)
   android: {
-    banner: 'ca-app-pub-2585981026340393/9149642997',       // REPLACE WITH YOUR REAL ANDROID BANNER ID (e.g. ca-app-pub-XXXXXXXXXXXX/YYYYYYY)
-    interstitial: 'ca-app-pub-2585981026340393/3532685935', // REPLACE WITH YOUR REAL ANDROID INTERSTITIAL ID
+    banner: 'ca-app-pub-2585981026340393/9149642997',       // YOUR REAL ANDROID BANNER ID
+    interstitial: 'ca-app-pub-2585981026340393/3532685935', // YOUR REAL ANDROID INTERSTITIAL ID
   },
   // 2. iOS Ad Unit IDs (For completeness/future deployment)
   ios: {
@@ -1680,6 +1680,24 @@ function GoogleAdScreen({ duration = 15, onClose, t }: { duration?: number, onCl
   useEffect(() => {
     const isNative = Capacitor.isNativePlatform();
     if (isNative) {
+      let dismissedListener: any = null;
+      let failedToShowListener: any = null;
+      let isClosed = false;
+
+      const triggerClose = () => {
+        if (!isClosed) {
+          isClosed = true;
+          // Clean up native listeners
+          try {
+            dismissedListener?.remove();
+            failedToShowListener?.remove();
+          } catch (e) {
+            console.warn("Error removing listeners:", e);
+          }
+          onClose();
+        }
+      };
+
       const showNativeInterstitial = async () => {
         try {
           // Hide standard HTML countdown block and wait for full native ad experience
@@ -1694,25 +1712,59 @@ function GoogleAdScreen({ duration = 15, onClose, t }: { duration?: number, onCl
 
           console.log(`Preparing native AdMob Interstitial (ID: ${finalAdId}, isTesting: ${isTestingAd})...`);
 
-          // 1. Prepare interstitial
+          // 1. Temporarily clear any active banner so that they do not conflict or overlay on top of each other!
+          try {
+            await AdMob.removeBanner();
+            console.log("Temporarily removed banner before displaying interstitial.");
+          } catch (bannerErr) {
+            console.warn("Could not remove banner before interstitial (might not be active):", bannerErr);
+          }
+
+          // 2. Set up event listeners for the interstitial BEFORE showing it!
+          dismissedListener = await AdMob.addListener('interstitialAdDismissed', () => {
+            console.log("AdMob: Interstitial ad closed by the user.");
+            triggerClose();
+          });
+
+          failedToShowListener = await AdMob.addListener('interstitialAdFailedToShow', (info: any) => {
+            console.warn("AdMob: Interstitial failed to show:", info);
+            // Fallback to HTML Countdown ad display
+            setShowHtmlAd(true);
+            try {
+              dismissedListener?.remove();
+              failedToShowListener?.remove();
+            } catch (e) {}
+          });
+
+          // 3. Prepare interstitial
           await AdMob.prepareInterstitial({
             adId: finalAdId,
             isTesting: isTestingAd,
           });
 
-          // 2. Show native interstitial
+          // 4. Show native interstitial
           await AdMob.showInterstitial();
-          console.log("Native AdMob Interstitial finished showing.");
+          console.log("Native AdMob Interstitial overlay presented successfully.");
           
-          // 3. Complete and return to prior view
-          onClose();
+          // NOTE: We do NOT call onClose() here! We wait for 'interstitialAdDismissed' event.
         } catch (err) {
           console.warn("Failed to load or present native AdMob Interstitial. Falling back to simulated HTML ad screen:", err);
           setShowHtmlAd(true);
+          try {
+            dismissedListener?.remove();
+            failedToShowListener?.remove();
+          } catch (e) {}
         }
       };
       
       showNativeInterstitial();
+
+      return () => {
+        try {
+          dismissedListener?.remove();
+          failedToShowListener?.remove();
+        } catch (e) {}
+      };
     }
   }, [onClose]);
 
