@@ -98,39 +98,8 @@ export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({
           loadedListener = await AdMob.addListener(BannerAdPluginEvents.Loaded, () => {
             console.log("🚩 AdMob SUCCESS: Banner Ad loaded successfully onto the screen!");
           });
-          failedListener = await AdMob.addListener(BannerAdPluginEvents.FailedToLoad, async (info: any) => {
+          failedListener = await AdMob.addListener(BannerAdPluginEvents.FailedToLoad, (info: any) => {
             console.error("🚩 AdMob ERROR: Banner advertisement failed to load! Details:", JSON.stringify(info));
-            
-            // AUTOMATIC DEVELOPER FALLBACK:
-            // If the real ad ID failed to load (No Fill Code 3, invalid traffic limit, unregistered device, etc.),
-            // we automatically retry with Google's Safe Test Banner ID so the developer/user gets
-            // visual confirmation that AdMob banner integration is 100% correct and works!
-            const isRealAdId = slot && slot.startsWith('ca-app-pub-');
-            if (isRealAdId && isBannerActive) {
-              console.warn("🔄 AdMob Action: Real banner ad failed to fill. Retrying with Safe Google Test Banner ID...");
-              try {
-                // Remove the failed real banner
-                try {
-                  await AdMob.removeBanner();
-                } catch (e) {}
-                
-                const testAdId = Capacitor.getPlatform() === 'ios'
-                  ? 'ca-app-pub-3940256099942544/2934735716'
-                  : 'ca-app-pub-3940256099942544/6300978111';
-                  
-                await AdMob.showBanner({
-                  adId: testAdId,
-                  adSize: BannerAdSize?.BANNER || 'BANNER',
-                  position: BannerAdPosition?.TOP_CENTER || 'TOP_CENTER',
-                  margin: 0,
-                  isTesting: true,
-                });
-                lastAdId = testAdId;
-                console.log("✅ AdMob Action: Successfully fell back to Google AdMob Test Banner overlay.");
-              } catch (fallbackErr) {
-                console.error("❌ AdMob Action: Fallback to test banner failed too:", fallbackErr);
-              }
-            }
           });
         } catch (eventListenerErr) {
           console.warn("Could not bind AdMob listener events:", eventListenerErr);
@@ -163,14 +132,12 @@ export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({
             }
           }
 
-          const isRealAdId = slot && slot.startsWith('ca-app-pub-');
-          const finalAdId = isRealAdId 
-            ? slot 
-            : (Capacitor.getPlatform() === 'ios'
-                ? 'ca-app-pub-3940256099942544/2934735716'
-                : 'ca-app-pub-3940256099942544/6300978111');
+          if (!slot) {
+            console.error("Ad Unit ID Missing");
+            return;
+          }
 
-          const isTestingAd = !isRealAdId || slot.includes('3940256099942544');
+          const finalAdId = slot;
 
           try {
             // Remove previous banner if ad ID changed
@@ -186,11 +153,10 @@ export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({
               adSize: BannerAdSize?.BANNER || 'BANNER',
               position: BannerAdPosition?.TOP_CENTER || 'TOP_CENTER',
               margin: 0,
-              isTesting: isTestingAd,
             });
             isBannerActive = true;
             lastAdId = slot;
-            console.log(`Capacitor Native AdMob Banner active at TOP_CENTER (ID: ${finalAdId}, testing: ${isTestingAd}).`);
+            console.log(`Capacitor Native AdMob Banner active at TOP_CENTER (ID: ${finalAdId}).`);
           } catch (showErr) {
             console.warn("Failed to show native AdMob banner overlay:", showErr);
           }

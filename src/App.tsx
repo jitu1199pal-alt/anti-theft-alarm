@@ -82,10 +82,10 @@ export const AD_CONFIG = {
     banner: 'ca-app-pub-2585981026340393/9149642997',       // Real production Android Banner ID
     interstitial: 'ca-app-pub-2585981026340393/3532685935', // Real production Android Interstitial ID
   },
-  // 2. iOS Ad Unit IDs (For completeness/future deployment)
+  // 2. iOS Ad Unit IDs (Production Mode Activated)
   ios: {
-    banner: 'ca-app-pub-3940256099942544/2934735716',       // REPLACE WITH YOUR REAL iOS BANNER ID
-    interstitial: 'ca-app-pub-3940256099942544/4411468910', // REPLACE WITH YOUR REAL iOS INTERSTITIAL ID
+    banner: 'ca-app-pub-2585981026340393/9149642997',       // Real production iOS Banner ID
+    interstitial: 'ca-app-pub-2585981026340393/3532685935', // Real production iOS Interstitial ID
   }
 };
 
@@ -101,13 +101,10 @@ export async function preloadAdMobInterstitial() {
   try {
     const { AdMob } = await import('@capacitor-community/admob');
     const finalAdId = getAdUnitId('interstitial');
-    const isRealAdId = finalAdId && finalAdId.startsWith('ca-app-pub-');
-    const isTestingAd = !isRealAdId || finalAdId.includes('3940256099942544');
 
-    console.log(`AdMob: Preloading Interstitial ad (ID: ${finalAdId}, isTesting: ${isTestingAd}) in background to guarantee instant display...`);
+    console.log(`AdMob: Preloading Interstitial ad (ID: ${finalAdId}) in background to guarantee instant display...`);
     await AdMob.prepareInterstitial({
       adId: finalAdId,
-      isTesting: isTestingAd,
     });
     console.log("AdMob: Interstitial preloaded successfully.");
   } catch (err) {
@@ -1012,7 +1009,7 @@ export default function App() {
       case Screen.SECURITY: return <SecurityScreen onBack={() => setScreen(Screen.HOME)} t={t} />;
       case Screen.HISTORY: return <HistoryScreen logs={chargingLogs} setLogs={setChargingLogs} chargingCycles={chargingCycles} onBack={() => setScreen(Screen.HOME)} t={t} />;
       case Screen.HEALTH: return <HealthScreen battery={battery} batteryCapacity={alarmConfig.batteryCapacity || 5000} chargingCycles={chargingCycles} onBack={() => setScreen(Screen.HOME)} t={t} />;
-      case Screen.LOCK: return <AlarmOverlay battery={battery} config={alarmConfig} security={securityConfig} audioContext={mainAudioContext} reason={alarmReason} onStop={async (disarm, openWithAd) => { 
+      case Screen.LOCK: return <AlarmOverlay battery={battery} config={alarmConfig} security={securityConfig} audioContext={mainAudioContext} reason={alarmReason} onStop={async (disarm, openWithAd, skipAd) => { 
       const currentReason = alarmReason;
       
       // Stop monitoring and stop native service immediately in all cases to prevent re-triggering loops
@@ -1028,6 +1025,20 @@ export default function App() {
       }
 
       setAlarmReason(null);
+
+      if (skipAd) {
+        setScreen(Screen.HOME);
+        if (Capacitor.isNativePlatform()) {
+          try {
+            await AlarmService.minimizeApp();
+            console.log("onStop (skipAd): App minimized/hidden after auto-disarm.");
+          } catch (e) {
+            console.error("Error minimizing app directly:", e);
+          }
+        }
+        return;
+      }
+
       setAdDuration(10);
       setAdKeepAppOpen(openWithAd === true);
       setAdForceMinimize(openWithAd !== true);
@@ -1819,10 +1830,8 @@ function GoogleAdScreen({ duration = 15, onClose, t }: { duration?: number, onCl
           }
           
           const finalAdId = getAdUnitId('interstitial');
-          const isRealAdId = finalAdId && finalAdId.startsWith('ca-app-pub-');
-          const isTestingAd = !isRealAdId || finalAdId.includes('3940256099942544');
 
-          console.log(`Preparing native AdMob Interstitial (ID: ${finalAdId}, isTesting: ${isTestingAd})...`);
+          console.log(`Preparing native AdMob Interstitial (ID: ${finalAdId})...`);
 
           // 1. Temporarily clear any active banner so that they do not conflict or overlay on top of each other!
           try {
@@ -1858,7 +1867,6 @@ function GoogleAdScreen({ duration = 15, onClose, t }: { duration?: number, onCl
             // Fallback: Prepare interstitial
             await AdMob.prepareInterstitial({
               adId: finalAdId,
-              isTesting: isTestingAd,
             });
 
             // Show native interstitial
