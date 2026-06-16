@@ -50,6 +50,7 @@ interface AlarmServicePluginType {
   getBatteryCapacity(): Promise<{ capacity: number }>;
   getPermissionsState(): Promise<{ batteryIgnored: boolean; overlayAllowed: boolean; notificationsEnabled?: boolean }>;
   minimizeApp(): Promise<{ success: boolean }>;
+  bringAppToForeground(): Promise<{ success: boolean }>;
   savePersistedValue(options: { key: string; value: string }): Promise<{ success: boolean }>;
   getPersistedValue(options: { key: string }): Promise<{ value: string | null }>;
   saveConfig(options: {
@@ -124,6 +125,10 @@ export default function App() {
   const [lowBatteryAlerted, setLowBatteryAlerted] = useState(false);
   const [initialLaunchChecksDone, setInitialLaunchChecksDone] = useState(false);
   const [alarmReason, setAlarmReason] = useState<'theft' | 'full' | 'low' | 'test' | null>(null);
+  const latestAlarmReasonRef = useRef<any>(null);
+  useEffect(() => {
+    latestAlarmReasonRef.current = alarmReason;
+  }, [alarmReason]);
   const wakeLockRef = useRef<any>(null);
   const silentAudioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -373,6 +378,12 @@ export default function App() {
         setAppWasOpenedByUser(true);
       }
       
+      const pending = localStorage.getItem('pendingAdReason');
+      if (pending === 'low' || pending === 'full') {
+        setAlarmReason(pending as any);
+        setScreen(Screen.LOCK);
+      }
+      
       setIsInitialized(true);
     });
 
@@ -380,6 +391,12 @@ export default function App() {
       checkNotificationPermission();
       fetchNativePermissions();
       syncNativeServiceState();
+      
+      const pending = localStorage.getItem('pendingAdReason');
+      if (pending === 'low' || pending === 'full') {
+        setAlarmReason(pending as any);
+        setScreen(Screen.LOCK);
+      }
     };
 
     window.addEventListener('focus', handleFocus);
@@ -440,8 +457,29 @@ export default function App() {
               console.error("Error setting appWasOpenedByUser on state change:", e);
               setAppWasOpenedByUser(true);
             }
+            
+            const pending = localStorage.getItem('pendingAdReason');
+            if (pending === 'low' || pending === 'full') {
+              setAlarmReason(pending as any);
+              setScreen(Screen.LOCK);
+            }
           } else {
             setAppWasOpenedByUser(false);
+            
+            // Prevent escaping low and full alarms by bringing the app right back
+            const pending = localStorage.getItem('pendingAdReason') || latestAlarmReasonRef.current;
+            if (pending === 'low' || pending === 'full') {
+              if (Capacitor.isNativePlatform()) {
+                setTimeout(async () => {
+                  try {
+                    await AlarmService.bringAppToForeground();
+                    console.log("Auto-restored app to foreground: Escape prevented.");
+                  } catch (err) {
+                    console.error("Error on drag-bounce foreground:", err);
+                  }
+                }, 1000);
+              }
+            }
           }
         });
       }
@@ -936,6 +974,15 @@ export default function App() {
       case Screen.HEALTH: return <HealthScreen battery={battery} batteryCapacity={alarmConfig.batteryCapacity || 5000} chargingCycles={chargingCycles} onBack={() => setScreen(Screen.HOME)} t={t} />;
       case Screen.LOCK: return <AlarmOverlay battery={battery} config={alarmConfig} security={securityConfig} audioContext={mainAudioContext} reason={alarmReason} onStop={async (disarm, openWithAd) => { 
       const currentReason = alarmReason;
+      if (currentReason === 'low' || currentReason === 'full') {
+        localStorage.setItem('pendingAdReason', currentReason);
+        setAlarmReason(null);
+        setAdDuration(10);
+        setAdKeepAppOpen(openWithAd === true);
+        setAdForceMinimize(true);
+        setScreen(Screen.ADS);
+        return;
+      }
       setTargetReachedAlerted(true);
       setAlarmReason(null);
       
@@ -953,7 +1000,7 @@ export default function App() {
 
       if (currentReason === 'theft') {
         setScreen(Screen.HOME);
-        if (!appWasOpenedByUser && Capacitor.isNativePlatform()) {
+        if (Capacitor.isNativePlatform()) {
           try {
             await AlarmService.minimizeApp();
           } catch (e) {
@@ -972,7 +1019,7 @@ export default function App() {
         setScreen(Screen.ADS);
       } else {
         setScreen(Screen.HOME);
-        if (!appWasOpenedByUser && Capacitor.isNativePlatform()) {
+        if (Capacitor.isNativePlatform()) {
           try {
             await AlarmService.minimizeApp();
           } catch (e) {
@@ -985,10 +1032,24 @@ export default function App() {
         <GoogleAdScreen 
           duration={adDuration}
           onClose={async () => {
+            const pending = localStorage.getItem('pendingAdReason');
+            if (pending === 'low' || pending === 'full') {
+              localStorage.removeItem('pendingAdReason');
+              setIsMonitoring(false);
+              localStorage.setItem('isMonitoring', JSON.stringify(false));
+              if (Capacitor.isNativePlatform()) {
+                try {
+                  await AlarmService.stopService();
+                  console.log("onClose: Stopped native service for low/full alarm.");
+                } catch (e) {
+                  console.error("onClose: Error stopping native service:", e);
+                }
+              }
+            }
+            
             setScreen(Screen.HOME);
-            const shouldMin = adForceMinimize || (!adKeepAppOpen && !appWasOpenedByUser);
             setAdForceMinimize(false);
-            if (shouldMin && Capacitor.isNativePlatform()) {
+            if (Capacitor.isNativePlatform()) {
               try {
                 await AlarmService.minimizeApp();
               } catch (e) {
@@ -1023,10 +1084,24 @@ export default function App() {
         <GoogleAdScreen 
           duration={adDuration}
           onClose={async () => {
+            const pending = localStorage.getItem('pendingAdReason');
+            if (pending === 'low' || pending === 'full') {
+              localStorage.removeItem('pendingAdReason');
+              setIsMonitoring(false);
+              localStorage.setItem('isMonitoring', JSON.stringify(false));
+              if (Capacitor.isNativePlatform()) {
+                try {
+                  await AlarmService.stopService();
+                  console.log("onClose: Stopped native service for low/full alarm.");
+                } catch (e) {
+                  console.error("onClose: Error stopping native service:", e);
+                }
+              }
+            }
+            
             setScreen(Screen.HOME);
-            const shouldMin = adForceMinimize || (!adKeepAppOpen && !appWasOpenedByUser);
             setAdForceMinimize(false);
-            if (shouldMin && Capacitor.isNativePlatform()) {
+            if (Capacitor.isNativePlatform()) {
               try {
                 await AlarmService.minimizeApp();
               } catch (e) {
@@ -3050,20 +3125,16 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
   useEffect(() => {
     // AUTO-STOP Logic
     
-    // 1. If it was a theft alarm (unplugged) or low battery, and user PLUGS IT BACK IN, stop alarm
-    if (battery.charging && (reason === 'theft' || reason === 'low' || reason === 'test')) {
-       // If plugged back in during these alarms, silence the alarm and disarm to run the ads
-       if (reason === 'theft' || reason === 'low') {
+    // Only theft and test alarms can be auto-stopped by plugging back in
+    if (battery.charging && (reason === 'theft' || reason === 'test')) {
+       if (reason === 'theft') {
          if (onStopRef.current) onStopRef.current(true);
        } else {
          if (onStopRef.current) onStopRef.current(false);
        }
     }
 
-    // 2. If it was a goal alarm (charging) and user UNPLUGS IT, stop alarm
-    if (!battery.charging && reason === 'full') {
-       if (onStopRef.current) onStopRef.current(false);
-    }
+    // Note: full and low alarms MUST be manually swiped and cannot auto-stop!
   }, [battery.charging, reason]);
 
   useEffect(() => {
@@ -3333,23 +3404,25 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
           </motion.div>
         </div>
 
-        <div className="flex gap-4">
-          <button 
-            onClick={handleSnooze}
-            className="flex items-center gap-2 px-6 py-3 bg-slate-900 border border-slate-800 rounded-full text-slate-400 hover:text-white transition-all active:scale-95"
-          >
-            <Moon size={16} />
-            <span className="text-[10px] font-bold uppercase tracking-widest">{t.snooze}</span>
-          </button>
-          
-          <button 
-            onClick={() => onStop(false)}
-            className="flex items-center gap-2 px-6 py-3 bg-slate-900 border border-slate-800 rounded-full text-accent hover:bg-accent hover:text-black transition-all active:scale-95"
-          >
-            <Settings size={16} />
-            <span className="text-[10px] font-bold uppercase tracking-widest">{t.changeGoal}</span>
-          </button>
-        </div>
+        {reason !== 'low' && reason !== 'full' && (
+          <div className="flex gap-4">
+            <button 
+              onClick={handleSnooze}
+              className="flex items-center gap-2 px-6 py-3 bg-slate-900 border border-slate-800 rounded-full text-slate-400 hover:text-white transition-all active:scale-95"
+            >
+              <Moon size={16} />
+              <span className="text-[10px] font-bold uppercase tracking-widest">{t.snooze}</span>
+            </button>
+            
+            <button 
+              onClick={() => onStop(false)}
+              className="flex items-center gap-2 px-6 py-3 bg-slate-900 border border-slate-800 rounded-full text-accent hover:bg-accent hover:text-black transition-all active:scale-95"
+            >
+              <Settings size={16} />
+              <span className="text-[10px] font-bold uppercase tracking-widest">{t.changeGoal}</span>
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col items-center gap-4">

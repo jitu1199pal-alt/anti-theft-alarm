@@ -133,6 +133,24 @@ public class AlarmServicePlugin extends Plugin {
     }
 
     @PluginMethod
+    public void bringAppToForeground(PluginCall call) {
+        try {
+            Context context = getContext();
+            Intent intent = new Intent(context, MainActivity.class);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | 
+                               Intent.FLAG_ACTIVITY_CLEAR_TOP | 
+                               Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            intent.putExtra("alarmActive", true);
+            context.startActivity(intent);
+            JSObject result = new JSObject();
+            result.put("success", true);
+            call.resolve(result);
+        } catch (Exception e) {
+            call.reject("Failed to bring app to foreground: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
     public void savePersistedValue(PluginCall call) {
         String key = call.getString("key");
         String value = call.getString("value");
