@@ -29,7 +29,7 @@ public class AlarmService extends Service {
     private static final int NOTIFICATION_ID = 4512;
 
     private boolean theftAlarmEnabled = false;
-    private int targetPercentage = 80;
+    private int targetPercentage = 98;
     private int lowBatteryPercentage = 20;
     private boolean vibrateEnabled = true;
     
@@ -73,7 +73,7 @@ public class AlarmService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         SharedPreferences prefs = getSharedPreferences("ChargeGuardPrefs", Context.MODE_PRIVATE);
         theftAlarmEnabled = prefs.getBoolean("theftAlarm", true);
-        targetPercentage = prefs.getInt("targetPercentage", 95);
+        targetPercentage = prefs.getInt("targetPercentage", 98);
         lowBatteryPercentage = prefs.getInt("lowBatteryPercentage", 20);
         vibrateEnabled = prefs.getBoolean("vibrate", true);
 
@@ -196,7 +196,7 @@ public class AlarmService extends Service {
         }
     }
 
-    private void triggerAlarm(String reason, String title) {
+    private void triggerAlarm(final String reason, String title) {
         isAlarmActive = true;
         alarmReason = reason;
 
@@ -208,6 +208,28 @@ public class AlarmService extends Service {
 
         showAlarmNotification(title, "Unlock/swipe to stop the alarm.");
         launchMainActivity();
+
+        if ("theft".equals(reason)) {
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    if (isAlarmActive && "theft".equals(alarmReason)) {
+                        stopAlarmSound();
+                        isAlarmActive = false;
+                        alarmReason = null;
+                        AlarmServicePlugin.setAlarmState(false, null);
+                        
+                        try {
+                            SharedPreferences prefs = getSharedPreferences("ChargeGuardPrefs", Context.MODE_PRIVATE);
+                            prefs.edit().putBoolean("isMonitoringActive", false).apply();
+                            stopSelf();
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }
+            }, 5000);
+        }
     }
 
     private void launchMainActivity() {

@@ -660,6 +660,23 @@ export default function App() {
     // Force true regardless of saved state
     return { ...config, theftAlarm: true };
   });
+
+  // Auto-enable monitoring and lock 98/20 config when permissions are allowed
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      if (nativePermissions.batteryIgnored && nativePermissions.overlayAllowed && hasNotificationPermission) {
+        if (!isMonitoring) {
+          setIsMonitoring(true);
+        }
+        setAlarmConfig(prev => {
+          if (prev.targetPercentage !== 98 || prev.lowBatteryPercentage !== 20) {
+            return { ...prev, targetPercentage: 98, lowBatteryPercentage: 20 };
+          }
+          return prev;
+        });
+      }
+    }
+  }, [nativePermissions, hasNotificationPermission, isMonitoring]);
   
   // Persistence Sync & Native Service Sync
   useEffect(() => {
@@ -934,7 +951,16 @@ export default function App() {
         }
       }
 
-      if (openWithAd) {
+      if (currentReason === 'theft') {
+        setScreen(Screen.HOME);
+        if (!appWasOpenedByUser && Capacitor.isNativePlatform()) {
+          try {
+            await AlarmService.minimizeApp();
+          } catch (e) {
+            console.error("Error minimizing app on stop:", e);
+          }
+        }
+      } else if (openWithAd) {
         setAdDuration(10);
         setAdKeepAppOpen(true);
         setAdForceMinimize(false);
@@ -2157,59 +2183,35 @@ function HomeScreen({
           </div>
         </div>
  
-        {/* Alarm Threshold */}
-        <div className="col-span-12 bento-card flex flex-col justify-between p-6">
-           <div className="flex justify-between items-center mb-4">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 bg-accent/20 rounded-lg text-accent"><Bell size={14} /></div>
-                <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{t.goalLevel}</h3>
-              </div>
-              <div className="flex items-center gap-2">
-                <input 
-                  type="number" 
-                  min="1" 
-                  max="100"
-                  placeholder="Set"
-                  className="w-16 bg-slate-950 border border-slate-800 rounded-lg py-1 text-center font-mono font-bold text-accent focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/50"
-                  value={config.targetPercentage}
-                  onChange={e => {
-                    let val = parseInt(e.target.value);
-                    if (isNaN(val)) {
-                      setConfig({ ...config, targetPercentage: 0 });
-                      return;
-                    }
-                    if (val > 100) val = 100;
-                    if (val < 1) val = 1;
-                    setConfig({ ...config, targetPercentage: val });
-                  }}
-                />
-                <span className="text-sm font-bold text-slate-500">%</span>
-              </div>
-           </div>
-           
-           <div className="grid grid-cols-6 gap-2 mb-4">
-            {[75, 80, 85, 90, 98, 100].map(p => (
-               <QuickPreset 
-                 key={p} 
-                 value={p} 
-                 active={config.targetPercentage === p} 
-                 onClick={() => setConfig({ ...config, targetPercentage: p })} 
-               />
-            ))}
-           </div>
- 
-           <div className="flex items-center gap-4">
-             <span className="text-[9px] font-bold text-slate-600">1%</span>
-             <input 
-                type="range" 
-                min="1" 
-                max="100" 
-                className="flex-1 h-1.5 accent-accent bg-slate-800 rounded-full appearance-none cursor-pointer" 
-                value={config.targetPercentage} 
-                onChange={e => setConfig({ ...config, targetPercentage: parseInt(e.target.value) })} 
-              />
-             <span className="text-[9px] font-bold text-slate-600">100%</span>
-           </div>
+        {/* Alarm Threshold - Locked Intelligent Battery Guard Settings */}
+        <div className="col-span-12 bento-card p-6 flex flex-col gap-4 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 via-transparent to-emerald-500/5 pointer-events-none" />
+          <div className="flex items-center gap-2.5 relative z-10">
+            <div className="p-2 bg-[#00FF88]/15 text-[#00FF88] rounded-xl">
+              <ShieldCheck size={18} />
+            </div>
+            <h3 className="text-xs font-extrabold uppercase tracking-widest text-[#00FF88] font-sans">
+              Intelligent Battery Guard Settings
+            </h3>
+          </div>
+
+          <p className="text-xs font-semibold leading-relaxed text-slate-300 relative z-10 font-sans">
+            Automatically alarm system first setup permission and without open charging app please charge plugin start automatically alarm
+          </p>
+
+          <div className="grid grid-cols-2 gap-3 relative z-10 mt-1">
+            <div className="p-3.5 bg-slate-950/80 border border-white/5 rounded-2xl flex flex-col gap-1 items-center justify-center text-center">
+              <span className="text-[9px] uppercase tracking-wider text-slate-500 font-extrabold font-sans">Minimum Charge</span>
+              <span className="text-2xl font-black text-rose-500 font-mono">20%</span>
+              <span className="text-[8px] text-slate-400 font-medium font-sans">Low Warning limit</span>
+            </div>
+
+            <div className="p-3.5 bg-slate-950/80 border border-white/5 rounded-2xl flex flex-col gap-1 items-center justify-center text-center">
+              <span className="text-[9px] uppercase tracking-wider text-slate-500 font-extrabold font-sans">Maximum Charge</span>
+              <span className="text-2xl font-black text-[#00FF88] font-mono">98%</span>
+              <span className="text-[8px] text-slate-400 font-medium font-sans">Full protect limit</span>
+            </div>
+          </div>
         </div>
  
         {/* AdMob (Moved from Top) */}
@@ -3020,6 +3022,12 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
   const [isSwiped, setIsSwiped] = useState(false);
   const [isSnoozed, setIsSnoozed] = useState(false);
 
+  // Keep a stable ref of onStop to prevent standard React re-render loops from resetting our auto-disarm timers
+  const onStopRef = useRef(onStop);
+  useEffect(() => {
+    onStopRef.current = onStop;
+  }, [onStop]);
+
   const handleSnooze = () => {
     setIsSnoozed(true);
     setTimeout(() => {
@@ -3028,23 +3036,35 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
   };
 
   useEffect(() => {
+    if (reason === 'theft') {
+      const timer = setTimeout(() => {
+        console.log("Automatically disarming theft alarm after 5 seconds");
+        if (onStopRef.current) {
+          onStopRef.current(true);
+        }
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [reason]);
+
+  useEffect(() => {
     // AUTO-STOP Logic
     
     // 1. If it was a theft alarm (unplugged) or low battery, and user PLUGS IT BACK IN, stop alarm
     if (battery.charging && (reason === 'theft' || reason === 'low' || reason === 'test')) {
        // If plugged back in during these alarms, silence the alarm and disarm to run the ads
        if (reason === 'theft' || reason === 'low') {
-         onStop(true);
+         if (onStopRef.current) onStopRef.current(true);
        } else {
-         onStop(false);
+         if (onStopRef.current) onStopRef.current(false);
        }
     }
 
     // 2. If it was a goal alarm (charging) and user UNPLUGS IT, stop alarm
     if (!battery.charging && reason === 'full') {
-       onStop(false);
+       if (onStopRef.current) onStopRef.current(false);
     }
-  }, [battery.charging, reason, onStop]);
+  }, [battery.charging, reason]);
 
   useEffect(() => {
     if (isSnoozed || isSwiped) return;
