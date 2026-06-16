@@ -25,6 +25,7 @@ interface GoogleAdMobProps {
   format?: 'auto' | 'fluid';
   responsive?: 'true' | 'false';
   style?: React.CSSProperties;
+  position?: 'TOP_CENTER' | 'BOTTOM_CENTER';
 }
 
 let isAdMobInitialized = false;
@@ -47,11 +48,29 @@ class AdMobMutex {
 }
 const admobMutex = new AdMobMutex();
 
+export const removeGlobalBanner = async () => {
+  isBannerActive = false;
+  lastAdId = '';
+  try {
+    if (!AdMob) {
+      const module = await import('@capacitor-community/admob');
+      AdMob = module.AdMob;
+    }
+    if (AdMob) {
+      await AdMob.removeBanner();
+      console.log("Global Banner: Native banner successfully removed and states reset.");
+    }
+  } catch (err) {
+    console.warn("Global Banner: Failed to remove native banner overlay:", err);
+  }
+};
+
 export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({ 
   slot, 
   format = 'auto', 
   responsive = 'true',
-  style = { display: 'block' }
+  style = { display: 'block' },
+  position = 'TOP_CENTER'
 }) => {
   const isNative = Capacitor.isNativePlatform();
   const [admobLoaded, setAdmobLoaded] = useState(false);
@@ -148,15 +167,19 @@ export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({
               isBannerActive = false;
             }
 
+            const nativePosition = position === 'TOP_CENTER' 
+              ? (BannerAdPosition?.TOP_CENTER || 'TOP_CENTER')
+              : (BannerAdPosition?.BOTTOM_CENTER || 'BOTTOM_CENTER');
+
             await AdMob.showBanner({
               adId: finalAdId,
               adSize: BannerAdSize?.BANNER || 'BANNER',
-              position: BannerAdPosition?.TOP_CENTER || 'TOP_CENTER',
+              position: nativePosition,
               margin: 0,
             });
             isBannerActive = true;
             lastAdId = slot;
-            console.log(`Capacitor Native AdMob Banner active at TOP_CENTER (ID: ${finalAdId}).`);
+            console.log(`Capacitor Native AdMob Banner active at ${position} (ID: ${finalAdId}).`);
           } catch (showErr) {
             console.warn("Failed to show native AdMob banner overlay:", showErr);
           }
@@ -182,33 +205,12 @@ export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({
       }
       if (isNative) {
         activeMounts--;
-        
-        // Wait 1200ms before removing the banner to allow smooth app screen transitions
-        // without constant creation/destruction cycles of the native overlays.
-        if (activeMounts <= 0) {
-          activeMounts = 0; // Guard against negative values
-          
-          if (destroyTimeoutId) {
-            clearTimeout(destroyTimeoutId);
-          }
-          
-          destroyTimeoutId = setTimeout(async () => {
-            await admobMutex.run(async () => {
-              if (activeMounts === 0 && isBannerActive) {
-                try {
-                  if (AdMob) {
-                    await AdMob.removeBanner();
-                    console.log("Capacitor Native AdMob Banner removed due to user navigating to ad-free view.");
-                  }
-                } catch (err) {
-                  console.warn("Error removing native banner on unmount timeout:", err);
-                }
-                isBannerActive = false;
-                lastAdId = '';
-              }
-            });
-          }, 1200); // 1.2-second debounce delay
+        if (activeMounts < 0) {
+          activeMounts = 0;
         }
+        console.log("AdMob: Component unmounted, remaining active mounts:", activeMounts);
+        // We DO NOT automatically remove the banner overlay here during component transitions.
+        // This keeps the exact same loaded banner ad active and seamless across screens.
       }
     };
   }, [isNative, slot]);

@@ -70,7 +70,7 @@ import { translations } from './translations';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { GoogleAdMob } from './components/GoogleAdMob';
+import { GoogleAdMob, removeGlobalBanner } from './components/GoogleAdMob';
 
 // =====================================================================
 //                   ADMOB AD UNIT CONFIGURATION (REAL CONFIG)
@@ -1835,7 +1835,7 @@ function GoogleAdScreen({ duration = 15, onClose, t }: { duration?: number, onCl
 
           // 1. Temporarily clear any active banner so that they do not conflict or overlay on top of each other!
           try {
-            await AdMob.removeBanner();
+            await removeGlobalBanner();
             console.log("Temporarily removed banner before displaying interstitial.");
           } catch (bannerErr) {
             console.warn("Could not remove banner before interstitial (might not be active):", bannerErr);
@@ -3158,7 +3158,7 @@ function StatusHealthItem({ label, value, sub }: any) {
   );
 }
 
-function AlarmOverlay({ battery, config, security, audioContext, reason, onStop, t }: { battery: BatteryState, config: AlarmConfig, security: SecurityConfig, audioContext: AudioContext | null, reason: 'theft' | 'full' | 'low' | 'test' | null, onStop: (disarm: boolean, openWithAd?: boolean) => void, t: any }) {
+function AlarmOverlay({ battery, config, security, audioContext, reason, onStop, t }: { battery: BatteryState, config: AlarmConfig, security: SecurityConfig, audioContext: AudioContext | null, reason: 'theft' | 'full' | 'low' | 'test' | null, onStop: (disarm: boolean, openWithAd?: boolean, skipAd?: boolean) => void, t: any }) {
   const [isSwiped, setIsSwiped] = useState(false);
   const [isSnoozed, setIsSnoozed] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -3181,7 +3181,7 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
       const timer = setTimeout(() => {
         console.log("Automatically disarming theft alarm after 3 seconds");
         if (onStopRef.current) {
-          onStopRef.current(true);
+          onStopRef.current(true, false, false);
         }
       }, 3000);
       return () => clearTimeout(timer);

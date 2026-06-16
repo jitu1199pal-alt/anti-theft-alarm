@@ -128,7 +128,11 @@ public class AlarmService extends Service {
         }
 
         // Register battery status receiver
-        registerReceiver(batteryReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(Intent.ACTION_BATTERY_CHANGED);
+        filter.addAction(Intent.ACTION_POWER_CONNECTED);
+        filter.addAction(Intent.ACTION_POWER_DISCONNECTED);
+        registerReceiver(batteryReceiver, filter);
 
         // Start Foreground Service with notification
         showOngoingNotification("ChargeGuard Pro Active Monitoring", "Protecting your device in background.");
@@ -137,24 +141,57 @@ public class AlarmService extends Service {
     }
 
     private void handleBatteryChanged(Intent intent) {
-        int status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
-        boolean isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
-                             status == BatteryManager.BATTERY_STATUS_FULL;
+        if (intent == null) return;
+        String action = intent.getAction();
 
-        int level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
-        int scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
-        int percent = Math.round((level / (float) scale) * 100);
+        boolean isCharging = false;
+        int percent = -1;
+
+        if (Intent.ACTION_BATTERY_CHANGED.equals(action)) {
+            int status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
+            isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                                 status == BatteryManager.BATTERY_STATUS_FULL;
+
+            int level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+            int scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+            percent = Math.round((level / (float) scale) * 100);
+        } else {
+            // Instant trigger on ACTION_POWER_CONNECTED or ACTION_POWER_DISCONNECTED
+            isCharging = Intent.ACTION_POWER_CONNECTED.equals(action);
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                BatteryManager bm = (BatteryManager) getSystemService(Context.BATTERY_SERVICE);
+                if (bm != null) {
+                    percent = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
+                }
+            }
+            if (percent < 0) {
+                // query standard sticky intent if capacity API failed
+                try {
+                    Intent sticky = registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+                    if (sticky != null) {
+                        int level = sticky.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+                        int scale = sticky.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+                        percent = Math.round((level / (float) scale) * 100);
+                    }
+                } catch (Exception e) {}
+            }
+        }
+
+        if (percent < 0) {
+            percent = 50; // safe fallback
+        }
 
         if (isFirstCheck) {
-            wasChargingOnStart = isCharging;
+            wasChargingOnStart = isCharging || Intent.ACTION_POWER_CONNECTED.equals(action);
             isFirstCheck = false;
         }
 
         // Handle alerts reset states based on charger status
-        if (isCharging) {
+        if (isCharging || Intent.ACTION_POWER_CONNECTED.equals(action)) {
             wasChargingOnStart = true;
             lowBatteryAlerted = false; // Reset low battery alerted status when charging
-        } else {
+        } else if (Intent.ACTION_POWER_DISCONNECTED.equals(action)) {
             targetReachedAlerted = false; // Reset target reached status when charger unplugged
         }
 
@@ -171,7 +208,8 @@ public class AlarmService extends Service {
         }
 
         // 1. Theft Alarm (Charger disconnected)
-        if (theftAlarmEnabled && wasChargingOnStart && !isCharging && !hadChargerUnplugged) {
+        boolean isUnpluggedDisconnection = Intent.ACTION_POWER_DISCONNECTED.equals(action) || (!isCharging && wasChargingOnStart);
+        if (theftAlarmEnabled && wasChargingOnStart && isUnpluggedDisconnection && !hadChargerUnplugged) {
             hadChargerUnplugged = true;
             triggerAlarm("theft", "Charger Disconnected! Anti-theft triggered.");
             return;
@@ -202,6 +240,22 @@ public class AlarmService extends Service {
 
         // Propagate state update immediately to the Capacitor plugin
         AlarmServicePlugin.setAlarmState(true, reason);
+
+        // Turn on screen instantly even under locked device
+        try {
+            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            if (pm != null) {
+                PowerManager.WakeLock screenWakeLock = pm.newWakeLock(
+                    PowerManager.SCREEN_BRIGHT_WAKE_LOCK |
+                    PowerManager.ACQUIRE_CAUSES_WAKEUP |
+                    PowerManager.ON_AFTER_RELEASE,
+                    "ChargeGuard::AlarmScreenWakeLock"
+                );
+                screenWakeLock.acquire(10000); // 10 seconds is plenty to show lock screen UI
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
 
         startAlarmSound();
         startVibrations();
