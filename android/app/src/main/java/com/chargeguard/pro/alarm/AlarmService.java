@@ -466,6 +466,44 @@ public class AlarmService extends Service {
                 e.printStackTrace();
             }
         }
+        
+        // Auto restart foreground monitoring service if it was explicitly active and terminated under OS memory pressure
+        try {
+            SharedPreferences prefs = getSharedPreferences("ChargeGuardPrefs", Context.MODE_PRIVATE);
+            boolean isMonitoringActive = prefs.getBoolean("isMonitoringActive", false);
+            if (isMonitoringActive) {
+                Intent restartServiceIntent = new Intent(getApplicationContext(), this.getClass());
+                restartServiceIntent.setPackage(getPackageName());
+                restartServiceIntent.putExtra("theftAlarm", theftAlarmEnabled);
+                restartServiceIntent.putExtra("targetPercentage", targetPercentage);
+                restartServiceIntent.putExtra("lowBatteryPercentage", lowBatteryPercentage);
+                restartServiceIntent.putExtra("vibrate", vibrateEnabled);
+                
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    try {
+                        startForegroundService(restartServiceIntent);
+                        System.out.println("AlarmService: Resurrected foreground monitor immediately.");
+                    } catch (Exception re) {
+                        PendingIntent restartServicePendingIntent = PendingIntent.getForegroundService(
+                            getApplicationContext(), 
+                            1001, 
+                            restartServiceIntent, 
+                            PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_IMMUTABLE
+                        );
+                        AlarmManager alarmManager = (AlarmManager) getApplicationContext().getSystemService(Context.ALARM_SERVICE);
+                        if (alarmManager != null) {
+                            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + 1000, restartServicePendingIntent);
+                            System.out.println("AlarmService: Fallback scheduled service resurrection in 1s.");
+                        }
+                    }
+                } else {
+                    startService(restartServiceIntent);
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
         AlarmServicePlugin.setServiceRunning(false);
         super.onDestroy();
     }

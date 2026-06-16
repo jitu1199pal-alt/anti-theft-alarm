@@ -3511,8 +3511,8 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
           </motion.div>
         )}
 
-        {/* Premium Pulsing Disable Alarm Button - Render ONLY on 20% Low Battery Alarm ('low') */}
-        {reason === 'low' && (
+        {/* Premium Pulsing Disable Alarm Button - Render and support for low battery, full battery, anti-theft, and test alarms */}
+        {reason && (
           <div className="w-full flex justify-center">
             <motion.button
               whileTap={{ scale: 0.95 }}
@@ -3523,12 +3523,12 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
               }}
               className="w-full max-w-[320px] py-4 px-8 rounded-2xl font-black text-sm uppercase tracking-wider text-center transition-all duration-300 shadow-xl border cursor-pointer bg-gradient-to-r from-emerald-500 to-teal-400 border-emerald-500/20 text-black shadow-emerald-500/10 hover:from-emerald-400 hover:to-teal-300 animate-pulse"
             >
-              Disable Alarm
+              Disable Alarm / अलार्म बंद करें
             </motion.button>
           </div>
         )}
 
-        {reason !== 'low' && reason !== 'full' && (
+        {reason && reason !== 'low' && (
           <div className="flex gap-4">
             <button 
               onClick={handleSnooze}
