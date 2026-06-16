@@ -95,6 +95,26 @@ export function getAdUnitId(type: 'banner' | 'interstitial'): string {
   return isIos ? AD_CONFIG.ios[type] : AD_CONFIG.android[type];
 }
 
+// Helper to eagerly preload and cache native interstitial ad in background
+export async function preloadAdMobInterstitial() {
+  if (!Capacitor.isNativePlatform()) return;
+  try {
+    const { AdMob } = await import('@capacitor-community/admob');
+    const finalAdId = getAdUnitId('interstitial');
+    const isRealAdId = finalAdId && finalAdId.startsWith('ca-app-pub-');
+    const isTestingAd = !isRealAdId || finalAdId.includes('3940256099942544');
+
+    console.log(`AdMob: Preloading Interstitial ad (ID: ${finalAdId}, isTesting: ${isTestingAd}) in background to guarantee instant display...`);
+    await AdMob.prepareInterstitial({
+      adId: finalAdId,
+      isTesting: isTestingAd,
+    });
+    console.log("AdMob: Interstitial preloaded successfully.");
+  } catch (err) {
+    console.warn("AdMob: Failed to preload interstitial in background:", err);
+  }
+}
+
 export default function App() {
   const [screen, setScreen] = useState<Screen>(Screen.SPLASH);
   const [theme, setTheme] = useState<Theme>('dark');
@@ -372,6 +392,8 @@ export default function App() {
             initializeForTesting: false,
           });
           console.log("AdMob SDK initialized on boot with initializeForTesting: false");
+          // Eagerly preload interstitial on boot so it displays immediately when needed
+          preloadAdMobInterstitial();
         } catch (adError) {
           console.error("AdMob initialization on boot failed:", adError);
         }
@@ -413,6 +435,13 @@ export default function App() {
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
   }, []);
+
+  // Preload AdMob interstitial whenever monitoring is active so it's ready of any alarm trigger
+  useEffect(() => {
+    if (isMonitoring) {
+      preloadAdMobInterstitial();
+    }
+  }, [isMonitoring]);
 
   const prevChargingRef = useRef(battery.charging);
   // Automatically arm active alarm set to 98% and start monitoring immediately when charger is plugged in (same as clicking "Set Alarm" manually)
@@ -1010,6 +1039,7 @@ export default function App() {
           onClose={async () => {
             setScreen(Screen.HOME);
             setAdForceMinimize(false);
+            preloadAdMobInterstitial(); // Preload for the next alarm trigger
             if (Capacitor.isNativePlatform() && !adKeepAppOpen) {
               try {
                 await AlarmService.minimizeApp();
@@ -1048,6 +1078,7 @@ export default function App() {
           onClose={async () => {
             setScreen(Screen.HOME);
             setAdForceMinimize(false);
+            preloadAdMobInterstitial(); // Preload for the next alarm trigger
             if (Capacitor.isNativePlatform() && !adKeepAppOpen) {
               try {
                 await AlarmService.minimizeApp();
@@ -1817,15 +1848,23 @@ function GoogleAdScreen({ duration = 15, onClose, t }: { duration?: number, onCl
             } catch (e) {}
           });
 
-          // 3. Prepare interstitial
-          await AdMob.prepareInterstitial({
-            adId: finalAdId,
-            isTesting: isTestingAd,
-          });
+          // 3. Try showing instantly since we preloaded it on boot or on arming
+          try {
+            console.log("AdMob: Attempting to present already preloaded Interstitial...");
+            await AdMob.showInterstitial();
+            console.log("Native AdMob Interstitial overlay presented successfully from background cache.");
+          } catch (showErr) {
+            console.log("AdMob: Preloaded interstitial was not ready or expired. Preparing fresh...", showErr);
+            // Fallback: Prepare interstitial
+            await AdMob.prepareInterstitial({
+              adId: finalAdId,
+              isTesting: isTestingAd,
+            });
 
-          // 4. Show native interstitial
-          await AdMob.showInterstitial();
-          console.log("Native AdMob Interstitial overlay presented successfully.");
+            // Show native interstitial
+            await AdMob.showInterstitial();
+            console.log("Native AdMob Interstitial overlay presented successfully.");
+          }
           
           // NOTE: We do NOT call onClose() here! We wait for 'interstitialAdDismissed' event.
         } catch (err) {

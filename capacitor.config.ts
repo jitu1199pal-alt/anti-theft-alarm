@@ -10,7 +10,7 @@ const config: CapacitorConfig = {
   plugins: {
     AdMob: {
       appId: 'ca-app-pub-2585981026340393~9327377010',
-      initializeForTesting: true
+      initializeForTesting: false
     }
   }
 };
