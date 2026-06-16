@@ -1815,6 +1815,9 @@ function GoogleAdScreen({ duration = 15, onClose, t }: { duration?: number, onCl
           // Hide standard HTML countdown block and wait for full native ad experience
           setShowHtmlAd(false);
           
+          // Let screen wake and lock-screen/window layout transitions settle before loading/calling AdMob
+          await new Promise((resolve) => setTimeout(resolve, 800));
+          
           const module = await import('@capacitor-community/admob');
           const AdMob = module.AdMob;
 
