@@ -78,8 +78,8 @@ import { GoogleAdMob } from './components/GoogleAdMob';
 export const AD_CONFIG = {
   // 1. Android Ad Unit IDs (These will activate when running on Android Device)
   android: {
-    banner: 'ca-app-pub-3940256099942544/6300978111',       // REPLACE WITH YOUR REAL ANDROID BANNER ID (e.g. ca-app-pub-XXXXXXXXXXXX/YYYYYYY)
-    interstitial: 'ca-app-pub-3940256099942544/1033173712', // REPLACE WITH YOUR REAL ANDROID INTERSTITIAL ID
+    banner: 'ca-app-pub-2585981026340393/9149642997',       // REPLACE WITH YOUR REAL ANDROID BANNER ID (e.g. ca-app-pub-XXXXXXXXXXXX/YYYYYYY)
+    interstitial: 'ca-app-pub-2585981026340393/3532685935', // REPLACE WITH YOUR REAL ANDROID INTERSTITIAL ID
   },
   // 2. iOS Ad Unit IDs (For completeness/future deployment)
   ios: {
