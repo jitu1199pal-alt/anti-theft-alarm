@@ -68,15 +68,6 @@ export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({
       return;
     }
 
-    // Cancel any pending unmount destroy timeout since we have a new mounting request!
-    if (destroyTimeoutId) {
-      clearTimeout(destroyTimeoutId);
-      destroyTimeoutId = null;
-      console.log("AdMob: Canceled pending banner destruction. Reusing banner.");
-    }
-
-    activeMounts++;
-
     const setupNativeAdMob = async () => {
       try {
         if (!AdMob) {
@@ -88,16 +79,6 @@ export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({
 
         if (!active) return;
         setAdmobLoaded(true);
-
-        // If the banner is already displayed and uses the same slot, DO NOT call native code!
-        // This is 100% lag-free and avoids triggering thread locks on page transitions.
-        if (isBannerActive && lastAdId === slot) {
-          console.log("AdMob: Reuse existing native banner seamlessly.");
-          if (active) {
-            setAdmobActive(true);
-          }
-          return;
-        }
 
         await admobMutex.run(async () => {
           if (!active) return;
@@ -126,18 +107,15 @@ export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({
           const isTestingAd = !isRealAdId || slot.includes('3940256099942544');
 
           try {
-            // Remove previous banner if ad ID changed
-            if (isBannerActive && lastAdId !== slot) {
-              try {
-                await AdMob.removeBanner();
-              } catch (e) {}
-              isBannerActive = false;
-            }
+            // Remove previous banner first to guarantee clean redraw
+            try {
+              await AdMob.removeBanner();
+            } catch (e) {}
 
             await AdMob.showBanner({
               adId: finalAdId,
               adSize: BannerAdSize?.BANNER || 'BANNER',
-              position: BannerAdPosition?.BOTTOM_CENTER || 'BOTTOM_CENTER', // Bottom placement is highly stable and standard
+              position: BannerAdPosition?.BOTTOM_CENTER || 'BOTTOM_CENTER',
               margin: 0,
               isTesting: isTestingAd,
             });
@@ -162,34 +140,18 @@ export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({
     return () => {
       active = false;
       if (isNative) {
-        activeMounts--;
-        
-        // Wait 1000ms before removing the banner to allow smooth app screen transitions
-        // without constant creation/destruction cycles of the native overlays.
-        if (activeMounts <= 0) {
-          activeMounts = 0; // Guard against negative values
-          
-          if (destroyTimeoutId) {
-            clearTimeout(destroyTimeoutId);
+        admobMutex.run(async () => {
+          try {
+            if (AdMob) {
+              await AdMob.removeBanner();
+              console.log("Capacitor Native AdMob Banner removed on unmount.");
+            }
+          } catch (err) {
+            console.warn("Error removing native banner on unmount:", err);
           }
-          
-          destroyTimeoutId = setTimeout(async () => {
-            await admobMutex.run(async () => {
-              if (activeMounts === 0 && isBannerActive) {
-                try {
-                  if (AdMob) {
-                    await AdMob.removeBanner();
-                    console.log("Capacitor Native AdMob Banner removed due to user navigating to ad-free view.");
-                  }
-                } catch (err) {
-                  console.warn("Error removing native banner on unmount timeout:", err);
-                }
-                isBannerActive = false;
-                lastAdId = '';
-              }
-            });
-          }, 1000); // 1-second debounce delay
-        }
+          isBannerActive = false;
+          lastAdId = '';
+        });
       }
     };
   }, [isNative, slot]);
