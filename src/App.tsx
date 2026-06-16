@@ -281,7 +281,19 @@ export default function App() {
     if (Capacitor.isNativePlatform()) {
       try {
         const state = await AlarmService.getServiceState() as any;
+        
+        // If local storage explicitly indicates monitoring is off, respect that
+        // and do not resurrect it because of asynchronous background service stopping delay
+        const savedMonitoringValue = localStorage.getItem('isMonitoring');
+        const isLocalMonitoringOff = savedMonitoringValue !== null && JSON.parse(savedMonitoringValue) === false;
+
         if (state.running) {
+          if (isLocalMonitoringOff) {
+            console.log("syncNativeServiceState: Local monitoring is off, cleaning native state.");
+            await AlarmService.stopService();
+            setIsMonitoring(false);
+            return;
+          }
           setIsMonitoring(true);
           if (state.targetPercentage) {
             setAlarmConfig(prev => ({
@@ -379,9 +391,11 @@ export default function App() {
     syncNativeServiceState();
   }, [battery.charging]);
 
+  const prevChargingRef = useRef(battery.charging);
   // Automatically arm active alarm set to 98% and start monitoring immediately when charger is plugged in (same as clicking "Set Alarm" manually)
   useEffect(() => {
-    if (battery.charging) {
+    const wasPluggedInTransition = battery.charging && !prevChargingRef.current;
+    if (wasPluggedInTransition) {
       setAlarmConfig(prev => {
         if (prev.targetPercentage !== 98) {
           return { ...prev, targetPercentage: 98 };
@@ -394,6 +408,7 @@ export default function App() {
         mainAudioContext.resume().catch(() => {});
       }
     }
+    prevChargingRef.current = battery.charging;
   }, [battery.charging, mainAudioContext]);
 
   // Basic Auth setup
@@ -911,21 +926,26 @@ export default function App() {
       const currentReason = alarmReason;
       setTargetReachedAlerted(true);
       setAlarmReason(null);
+      
+      // Stop monitoring and stop native service immediately to prevent any re-triggering loops after the ads finish
+      setIsMonitoring(false);
+      localStorage.setItem('isMonitoring', JSON.stringify(false));
+      if (Capacitor.isNativePlatform()) {
+        try {
+          await AlarmService.stopService();
+          console.log("onStop: Stopped native alarm service.");
+        } catch (e) {
+          console.error("onStop: Error stopping native service:", e);
+        }
+      }
+
       if (openWithAd) {
-        setAdDuration(5);
+        setAdDuration(10);
         setAdKeepAppOpen(true);
         setAdForceMinimize(false);
         setScreen(Screen.ADS);
       } else if (disarm) {
-        let duration = 10;
-        if (currentReason === 'low' || currentReason === 'test') {
-          duration = 5;
-        } else if (currentReason === 'theft') {
-          duration = 5;
-        } else if (currentReason === 'full') {
-          duration = 10;
-        }
-        setAdDuration(duration);
+        setAdDuration(10);
         setAdKeepAppOpen(false);
         setAdForceMinimize(true);
         setScreen(Screen.ADS);
@@ -1727,12 +1747,12 @@ function GoogleAdScreen({ duration = 15, onClose, t }: { duration?: number, onCl
           }
 
           // 2. Set up event listeners for the interstitial BEFORE showing it!
-          dismissedListener = await AdMob.addListener('interstitialAdDismissed', () => {
+          dismissedListener = await (AdMob.addListener as any)('interstitialAdDismissed', () => {
             console.log("AdMob: Interstitial ad closed by the user.");
             triggerClose();
           });
 
-          failedToShowListener = await AdMob.addListener('interstitialAdFailedToShow', (info: any) => {
+          failedToShowListener = await (AdMob.addListener as any)('interstitialAdFailedToShow', (info: any) => {
             console.warn("AdMob: Interstitial failed to show:", info);
             // Fallback to HTML Countdown ad display
             setShowHtmlAd(true);
