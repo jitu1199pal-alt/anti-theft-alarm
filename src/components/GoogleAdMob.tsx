@@ -68,6 +68,16 @@ export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({
       return;
     }
 
+    // Increment active mount count for reference tracking
+    activeMounts++;
+
+    // Cancel any pending unmount destruction timeout since we have an active component view
+    if (destroyTimeoutId) {
+      clearTimeout(destroyTimeoutId);
+      destroyTimeoutId = null;
+      console.log("AdMob: Canceled pending banner destruction. Reusing on-screen banner.");
+    }
+
     const setupNativeAdMob = async () => {
       try {
         if (!AdMob) {
@@ -79,6 +89,16 @@ export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({
 
         if (!active) return;
         setAdmobLoaded(true);
+
+        // If the banner is already displayed and uses the same slot, DO NOT rebuild/re-query it!
+        // This is 100% lag-free and avoids triggering slow native calls or flicker on page transitions.
+        if (isBannerActive && lastAdId === slot) {
+          console.log("AdMob: Reuse existing native banner seamlessly.");
+          if (active) {
+            setAdmobActive(true);
+          }
+          return;
+        }
 
         await admobMutex.run(async () => {
           if (!active) return;
@@ -107,10 +127,13 @@ export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({
           const isTestingAd = !isRealAdId || slot.includes('3940256099942544');
 
           try {
-            // Remove previous banner first to guarantee clean redraw
-            try {
-              await AdMob.removeBanner();
-            } catch (e) {}
+            // Remove previous banner if ad ID changed
+            if (isBannerActive && lastAdId !== slot) {
+              try {
+                await AdMob.removeBanner();
+              } catch (e) {}
+              isBannerActive = false;
+            }
 
             await AdMob.showBanner({
               adId: finalAdId,
@@ -121,7 +144,7 @@ export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({
             });
             isBannerActive = true;
             lastAdId = slot;
-            console.log(`Capacitor Native AdMob Banner active (ID: ${finalAdId}, testing: ${isTestingAd}).`);
+            console.log(`Capacitor Native AdMob Banner active at TOP_CENTER (ID: ${finalAdId}, testing: ${isTestingAd}).`);
           } catch (showErr) {
             console.warn("Failed to show native AdMob banner overlay:", showErr);
           }
@@ -140,18 +163,34 @@ export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({
     return () => {
       active = false;
       if (isNative) {
-        admobMutex.run(async () => {
-          try {
-            if (AdMob) {
-              await AdMob.removeBanner();
-              console.log("Capacitor Native AdMob Banner removed on unmount.");
-            }
-          } catch (err) {
-            console.warn("Error removing native banner on unmount:", err);
+        activeMounts--;
+        
+        // Wait 1200ms before removing the banner to allow smooth app screen transitions
+        // without constant creation/destruction cycles of the native overlays.
+        if (activeMounts <= 0) {
+          activeMounts = 0; // Guard against negative values
+          
+          if (destroyTimeoutId) {
+            clearTimeout(destroyTimeoutId);
           }
-          isBannerActive = false;
-          lastAdId = '';
-        });
+          
+          destroyTimeoutId = setTimeout(async () => {
+            await admobMutex.run(async () => {
+              if (activeMounts === 0 && isBannerActive) {
+                try {
+                  if (AdMob) {
+                    await AdMob.removeBanner();
+                    console.log("Capacitor Native AdMob Banner removed due to user navigating to ad-free view.");
+                  }
+                } catch (err) {
+                  console.warn("Error removing native banner on unmount timeout:", err);
+                }
+                isBannerActive = false;
+                lastAdId = '';
+              }
+            });
+          }, 1200); // 1.2-second debounce delay
+        }
       }
     };
   }, [isNative, slot]);
