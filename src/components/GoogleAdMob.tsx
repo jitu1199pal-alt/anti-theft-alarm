@@ -153,13 +153,13 @@ export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({
             await AdMob.showBanner({
               adId: finalAdId,
               adSize: BannerAdSize?.BANNER || 'BANNER',
-              position: BannerAdPosition?.TOP_CENTER || 'TOP_CENTER',
+              position: BannerAdPosition?.BOTTOM_CENTER || 'BOTTOM_CENTER',
               margin: 0,
               isTesting: isTestingAd,
             });
             isBannerActive = true;
             lastAdId = slot;
-            console.log(`Capacitor Native AdMob Banner active at TOP_CENTER (ID: ${finalAdId}, testing: ${isTestingAd}).`);
+            console.log(`Capacitor Native AdMob Banner active at BOTTOM_CENTER (ID: ${finalAdId}, testing: ${isTestingAd}).`);
           } catch (showErr) {
             console.warn("Failed to show native AdMob banner overlay:", showErr);
           }

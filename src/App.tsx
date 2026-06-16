@@ -1100,7 +1100,7 @@ export default function App() {
         "relative h-screen w-full max-w-[480px] mx-auto overflow-y-auto transition-colors duration-1000",
         theme === 'dark' ? "bg-black text-white" : "bg-slate-50 text-slate-900",
         theme === 'neon' && "bg-[#0b0c10] text-[#66fcf1]",
-        Capacitor.isNativePlatform() && screen !== Screen.SPLASH && screen !== Screen.LOCK ? "pt-[70px]" : ""
+        Capacitor.isNativePlatform() && screen !== Screen.SPLASH && screen !== Screen.LOCK ? "pb-[65px]" : ""
       )}>
       {/* Dynamic Background Gradient */}
       <div className={cn(
