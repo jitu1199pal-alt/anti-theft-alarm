@@ -59,6 +59,8 @@ export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({
 
   useEffect(() => {
     let active = true;
+    let loadedListener: any = null;
+    let failedListener: any = null;
 
     if (!isNative) {
       try {
@@ -89,6 +91,19 @@ export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({
 
         if (!active) return;
         setAdmobLoaded(true);
+
+        // Bind event listeners to log exact performance or issues
+        try {
+          const { BannerAdPluginEvents } = await import('@capacitor-community/admob');
+          loadedListener = await AdMob.addListener(BannerAdPluginEvents.Loaded, () => {
+            console.log("🚩 AdMob SUCCESS: Banner Ad loaded successfully onto the screen!");
+          });
+          failedListener = await AdMob.addListener(BannerAdPluginEvents.FailedToLoad, (info: any) => {
+            console.error("🚩 AdMob ERROR: Banner advertisement failed to load! Details:", JSON.stringify(info));
+          });
+        } catch (eventListenerErr) {
+          console.warn("Could not bind AdMob listener events:", eventListenerErr);
+        }
 
         // If the banner is already displayed and uses the same slot, DO NOT rebuild/re-query it!
         // This is 100% lag-free and avoids triggering slow native calls or flicker on page transitions.
@@ -162,6 +177,12 @@ export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({
 
     return () => {
       active = false;
+      if (loadedListener) {
+        try { loadedListener.remove(); } catch (e) {}
+      }
+      if (failedListener) {
+        try { failedListener.remove(); } catch (e) {}
+      }
       if (isNative) {
         activeMounts--;
         

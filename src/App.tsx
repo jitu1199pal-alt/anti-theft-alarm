@@ -2673,6 +2673,8 @@ function AlarmSettings({ config, setConfig, onBack, t }: any) {
         </div>
       </div>
 
+      <GoogleAdMob slot={getAdUnitId('banner')} />
+
       {/* Custom Battery Capacity Input Dialog Modal */}
       <AnimatePresence>
         {isCapacityDialogOpen && (
