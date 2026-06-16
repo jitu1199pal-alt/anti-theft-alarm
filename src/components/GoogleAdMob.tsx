@@ -185,7 +185,7 @@ export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({
               adId: finalAdId,
               adSize: BannerAdSize?.BANNER || 'BANNER',
               position: BannerAdPosition?.BOTTOM_CENTER || 'BOTTOM_CENTER',
-              margin: 50,
+              margin: 120,
               isTesting: isTestingAd,
             });
             isBannerActive = true;
