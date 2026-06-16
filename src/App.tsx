@@ -71,6 +71,29 @@ import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { GoogleAdMob } from './components/GoogleAdMob';
 
+// =====================================================================
+//                   ADMOB AD UNIT CONFIGURATION (REAL CONFIG)
+// =====================================================================
+// CREATEGUARD: Replace these with your actual live AdMob Ad Unit IDs from AdMob Console!
+export const AD_CONFIG = {
+  // 1. Android Ad Unit IDs (These will activate when running on Android Device)
+  android: {
+    banner: 'ca-app-pub-3940256099942544/6300978111',       // REPLACE WITH YOUR REAL ANDROID BANNER ID (e.g. ca-app-pub-XXXXXXXXXXXX/YYYYYYY)
+    interstitial: 'ca-app-pub-3940256099942544/1033173712', // REPLACE WITH YOUR REAL ANDROID INTERSTITIAL ID
+  },
+  // 2. iOS Ad Unit IDs (For completeness/future deployment)
+  ios: {
+    banner: 'ca-app-pub-3940256099942544/2934735716',       // REPLACE WITH YOUR REAL iOS BANNER ID
+    interstitial: 'ca-app-pub-3940256099942544/4411468910', // REPLACE WITH YOUR REAL iOS INTERSTITIAL ID
+  }
+};
+
+// Helper function to resolve dynamic Ad Unit ID based on platform
+export function getAdUnitId(type: 'banner' | 'interstitial'): string {
+  const isIos = Capacitor.getPlatform() === 'ios';
+  return isIos ? AD_CONFIG.ios[type] : AD_CONFIG.android[type];
+}
+
 export default function App() {
   const [screen, setScreen] = useState<Screen>(Screen.SPLASH);
   const [theme, setTheme] = useState<Theme>('dark');
@@ -982,7 +1005,7 @@ export default function App() {
         "relative h-screen w-full max-w-[480px] mx-auto overflow-y-auto transition-colors duration-1000",
         theme === 'dark' ? "bg-black text-white" : "bg-slate-50 text-slate-900",
         theme === 'neon' && "bg-[#0b0c10] text-[#66fcf1]",
-        Capacitor.isNativePlatform() && screen !== Screen.SPLASH && screen !== Screen.LOCK && screen !== Screen.ADS ? "pt-[60px]" : ""
+        Capacitor.isNativePlatform() && screen !== Screen.SPLASH && screen !== Screen.LOCK ? "pt-[60px]" : ""
       )}>
       {/* Dynamic Background Gradient */}
       <div className={cn(
@@ -1629,12 +1652,16 @@ function NavButton({ icon: Icon, active, onClick }: { icon: any, active: boolean
 
 function GoogleAdScreen({ duration = 15, onClose, t }: { duration?: number, onClose: () => void, t: any }) {
   const [secondsLeft, setSecondsLeft] = useState(duration);
+  const [showHtmlAd, setShowHtmlAd] = useState(true);
 
   useEffect(() => {
     setSecondsLeft(duration);
   }, [duration]);
 
+  // Handle local countdown for fallback HTML Ad
   useEffect(() => {
+    if (!showHtmlAd) return;
+    
     const interval = setInterval(() => {
       setSecondsLeft((prev) => {
         if (prev <= 1) {
@@ -1647,8 +1674,61 @@ function GoogleAdScreen({ duration = 15, onClose, t }: { duration?: number, onCl
     }, 1000);
 
     return () => clearInterval(interval);
+  }, [onClose, showHtmlAd]);
+
+  // Dynamically load & trigger real Native AdMob Interstitial on mobile devices!
+  useEffect(() => {
+    const isNative = Capacitor.isNativePlatform();
+    if (isNative) {
+      const showNativeInterstitial = async () => {
+        try {
+          // Hide standard HTML countdown block and wait for full native ad experience
+          setShowHtmlAd(false);
+          
+          const module = await import('@capacitor-community/admob');
+          const AdMob = module.AdMob;
+          
+          const finalAdId = getAdUnitId('interstitial');
+          const isRealAdId = finalAdId && finalAdId.startsWith('ca-app-pub-');
+          const isTestingAd = !isRealAdId || finalAdId.includes('3940256099942544');
+
+          console.log(`Preparing native AdMob Interstitial (ID: ${finalAdId}, isTesting: ${isTestingAd})...`);
+
+          // 1. Prepare interstitial
+          await AdMob.prepareInterstitial({
+            adId: finalAdId,
+            isTesting: isTestingAd,
+          });
+
+          // 2. Show native interstitial
+          await AdMob.showInterstitial();
+          console.log("Native AdMob Interstitial finished showing.");
+          
+          // 3. Complete and return to prior view
+          onClose();
+        } catch (err) {
+          console.warn("Failed to load or present native AdMob Interstitial. Falling back to simulated HTML ad screen:", err);
+          setShowHtmlAd(true);
+        }
+      };
+      
+      showNativeInterstitial();
+    }
   }, [onClose]);
 
+  // If native interstitial is rendering or playing, don't obstruct the user
+  if (!showHtmlAd) {
+    return (
+      <div className="fixed inset-0 bg-black z-[9999] w-screen h-screen flex flex-col justify-center items-center p-6 text-white text-center font-sans">
+        <div className="w-16 h-16 rounded-full border-4 border-accent border-t-transparent animate-spin mb-4" />
+        <h3 className="text-sm font-bold tracking-wide">Loading AdMob Premium Ad...</h3>
+        <p className="text-xs text-slate-500 mt-2">Connecting with Google Mobile Ads SDK</p>
+      </div>
+    );
+  }
+
+  // Fallback beautiful HTML on-screen ad countdown
+  const bannerAdId = getAdUnitId('banner');
   return (
     <div className="fixed inset-0 bg-slate-950 z-[9999] w-screen h-screen flex flex-col justify-between p-6 select-none text-white font-sans animate-fade-in">
       {/* Ad Header */}
@@ -1677,7 +1757,7 @@ function GoogleAdScreen({ duration = 15, onClose, t }: { duration?: number, onCl
       <div className="flex-1 flex flex-col items-stretch justify-stretch w-full my-4 px-2">
         <div className="w-full h-full flex-1 bg-slate-900/40 border border-slate-800/60 rounded-3xl p-4 shadow-2xl relative overflow-hidden flex flex-col justify-center items-center">
           {/* Real Google AdMob Component slot integration */}
-          <GoogleAdMob slot="5678901234" format="auto" responsive="true" style={{ display: 'block', width: '100%', height: '100%' }} />
+          <GoogleAdMob slot={bannerAdId} format="auto" responsive="true" style={{ display: 'block', width: '100%', height: '100%' }} />
         </div>
       </div>
 
@@ -2061,7 +2141,7 @@ function HomeScreen({
  
         {/* AdMob (Moved from Top) */}
         <div className="col-span-12 mt-2">
-          <GoogleAdMob slot="1234567890" />
+          <GoogleAdMob slot={getAdUnitId('banner')} />
         </div>
  
         {/* Master Toggle */}
@@ -2578,7 +2658,7 @@ function SecurityScreen({ onBack, t }: any) {
           </div>
         </div>
 
-        <GoogleAdMob slot="3456789012" />
+        <GoogleAdMob slot={getAdUnitId('banner')} />
       </div>
 
       {/* Modern sliding overlay modal for on-device privacy readability */}
@@ -2723,7 +2803,7 @@ function HistoryScreen({ logs, setLogs, chargingCycles, onBack, t }: any) {
         )}
       </div>
 
-      <GoogleAdMob slot="4567890123" />
+      <GoogleAdMob slot={getAdUnitId('banner')} />
     </motion.div>
   );
 }
@@ -2797,7 +2877,7 @@ function HealthScreen({ battery, batteryCapacity, chargingCycles, onBack, t }: a
         </div>
       </div>
 
-      <GoogleAdMob slot="7890123456" />
+      <GoogleAdMob slot={getAdUnitId('banner')} />
     </motion.div>
   );
 }

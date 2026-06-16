@@ -35,7 +35,7 @@ let activeMounts = 0;
 class AdMobMutex {
   private queue: Promise<any> = Promise.resolve();
 
-  async run<T>(op: () => Promise<T>): Promise<T | undefined> {
+  async run(op: () => Promise<any>): Promise<any> {
     const next = this.queue.then(op).catch((err) => {
       console.warn("Error in AdMob synchronized sequence:", err);
     });
