@@ -386,11 +386,6 @@ export default function App() {
     return () => window.removeEventListener('focus', handleFocus);
   }, []);
 
-  // Synchronise native service status in real-time when charging connection changes
-  useEffect(() => {
-    syncNativeServiceState();
-  }, [battery.charging]);
-
   const prevChargingRef = useRef(battery.charging);
   // Automatically arm active alarm set to 98% and start monitoring immediately when charger is plugged in (same as clicking "Set Alarm" manually)
   useEffect(() => {
