@@ -107,7 +107,7 @@ export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({
             try {
               await AdMob.initialize({
                 requestTrackingAuthorization: true,
-                initializeForTesting: true,
+                initializeForTesting: false,
               });
               isAdMobInitialized = true;
               console.log("Capacitor AdMob SDK initialized successfully.");

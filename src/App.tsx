@@ -366,6 +366,17 @@ export default function App() {
       
       if (Capacitor.isNativePlatform()) {
         try {
+          const { AdMob } = await import('@capacitor-community/admob');
+          await (AdMob as any).initialize({
+            requestTrackingAuthorization: true,
+            initializeForTesting: false,
+          });
+          console.log("AdMob SDK initialized on boot with initializeForTesting: false");
+        } catch (adError) {
+          console.error("AdMob initialization on boot failed:", adError);
+        }
+        
+        try {
           const state = await AlarmService.getServiceState() as any;
           if (!state.isAlarming && !state.alarmReason) {
             setAppWasOpenedByUser(true);
@@ -974,19 +985,8 @@ export default function App() {
       case Screen.HEALTH: return <HealthScreen battery={battery} batteryCapacity={alarmConfig.batteryCapacity || 5000} chargingCycles={chargingCycles} onBack={() => setScreen(Screen.HOME)} t={t} />;
       case Screen.LOCK: return <AlarmOverlay battery={battery} config={alarmConfig} security={securityConfig} audioContext={mainAudioContext} reason={alarmReason} onStop={async (disarm, openWithAd) => { 
       const currentReason = alarmReason;
-      if (currentReason === 'low' || currentReason === 'full') {
-        localStorage.setItem('pendingAdReason', currentReason);
-        setAlarmReason(null);
-        setAdDuration(10);
-        setAdKeepAppOpen(openWithAd === true);
-        setAdForceMinimize(true);
-        setScreen(Screen.ADS);
-        return;
-      }
-      setTargetReachedAlerted(true);
-      setAlarmReason(null);
       
-      // Stop monitoring and stop native service immediately to prevent any re-triggering loops after the ads finish
+      // Stop monitoring and stop native service immediately in all cases to prevent re-triggering loops
       setIsMonitoring(false);
       localStorage.setItem('isMonitoring', JSON.stringify(false));
       if (Capacitor.isNativePlatform()) {
@@ -998,60 +998,22 @@ export default function App() {
         }
       }
 
-      if (currentReason === 'theft') {
-        setScreen(Screen.HOME);
-        if (Capacitor.isNativePlatform()) {
-          try {
-            await AlarmService.minimizeApp();
-          } catch (e) {
-            console.error("Error minimizing app on stop:", e);
-          }
-        }
-      } else if (openWithAd) {
-        setAdDuration(10);
-        setAdKeepAppOpen(true);
-        setAdForceMinimize(false);
-        setScreen(Screen.ADS);
-      } else if (disarm) {
-        setAdDuration(10);
-        setAdKeepAppOpen(false);
-        setAdForceMinimize(true);
-        setScreen(Screen.ADS);
-      } else {
-        setScreen(Screen.HOME);
-        if (Capacitor.isNativePlatform()) {
-          try {
-            await AlarmService.minimizeApp();
-          } catch (e) {
-            console.error("Error minimizing app on stop:", e);
-          }
-        }
-      }
+      setAlarmReason(null);
+      setAdDuration(10);
+      setAdKeepAppOpen(openWithAd === true);
+      setAdForceMinimize(openWithAd !== true);
+      setScreen(Screen.ADS);
     }} t={t} />;
       case Screen.ADS: return (
         <GoogleAdScreen 
           duration={adDuration}
           onClose={async () => {
-            const pending = localStorage.getItem('pendingAdReason');
-            if (pending === 'low' || pending === 'full') {
-              localStorage.removeItem('pendingAdReason');
-              setIsMonitoring(false);
-              localStorage.setItem('isMonitoring', JSON.stringify(false));
-              if (Capacitor.isNativePlatform()) {
-                try {
-                  await AlarmService.stopService();
-                  console.log("onClose: Stopped native service for low/full alarm.");
-                } catch (e) {
-                  console.error("onClose: Error stopping native service:", e);
-                }
-              }
-            }
-            
             setScreen(Screen.HOME);
             setAdForceMinimize(false);
-            if (Capacitor.isNativePlatform()) {
+            if (Capacitor.isNativePlatform() && !adKeepAppOpen) {
               try {
                 await AlarmService.minimizeApp();
+                console.log("onClose: App minimized successfully on ad completion.");
               } catch (e) {
                 console.error("Error minimizing app on ad close:", e);
               }
@@ -1084,28 +1046,14 @@ export default function App() {
         <GoogleAdScreen 
           duration={adDuration}
           onClose={async () => {
-            const pending = localStorage.getItem('pendingAdReason');
-            if (pending === 'low' || pending === 'full') {
-              localStorage.removeItem('pendingAdReason');
-              setIsMonitoring(false);
-              localStorage.setItem('isMonitoring', JSON.stringify(false));
-              if (Capacitor.isNativePlatform()) {
-                try {
-                  await AlarmService.stopService();
-                  console.log("onClose: Stopped native service for low/full alarm.");
-                } catch (e) {
-                  console.error("onClose: Error stopping native service:", e);
-                }
-              }
-            }
-            
             setScreen(Screen.HOME);
             setAdForceMinimize(false);
-            if (Capacitor.isNativePlatform()) {
+            if (Capacitor.isNativePlatform() && !adKeepAppOpen) {
               try {
                 await AlarmService.minimizeApp();
+                console.log("onClose: App minimized successfully on ad completion (outer).");
               } catch (e) {
-                console.error("Error minimizing app on ad close:", e);
+                console.error("Error minimizing app on ad close (outer):", e);
               }
             }
           }} 
@@ -1827,6 +1775,17 @@ function GoogleAdScreen({ duration = 15, onClose, t }: { duration?: number, onCl
           
           const module = await import('@capacitor-community/admob');
           const AdMob = module.AdMob;
+
+          // Crucial: ALWAYS initialize AdMob first in case the app was opened in alarm mode directly
+          try {
+            await (AdMob as any).initialize({
+              requestTrackingAuthorization: true,
+              initializeForTesting: false,
+            });
+            console.log("AdMob SDK initialized successfully inside GoogleAdScreen.");
+          } catch (initErr) {
+            console.warn("AdMob SDK already initialized or failed to initialize in GoogleAdScreen:", initErr);
+          }
           
           const finalAdId = getAdUnitId('interstitial');
           const isRealAdId = finalAdId && finalAdId.startsWith('ca-app-pub-');
@@ -3096,6 +3055,7 @@ function StatusHealthItem({ label, value, sub }: any) {
 function AlarmOverlay({ battery, config, security, audioContext, reason, onStop, t }: { battery: BatteryState, config: AlarmConfig, security: SecurityConfig, audioContext: AudioContext | null, reason: 'theft' | 'full' | 'low' | 'test' | null, onStop: (disarm: boolean, openWithAd?: boolean) => void, t: any }) {
   const [isSwiped, setIsSwiped] = useState(false);
   const [isSnoozed, setIsSnoozed] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Keep a stable ref of onStop to prevent standard React re-render loops from resetting our auto-disarm timers
   const onStopRef = useRef(onStop);
@@ -3113,11 +3073,11 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
   useEffect(() => {
     if (reason === 'theft') {
       const timer = setTimeout(() => {
-        console.log("Automatically disarming theft alarm after 5 seconds");
+        console.log("Automatically disarming theft alarm after 3 seconds");
         if (onStopRef.current) {
           onStopRef.current(true);
         }
-      }, 5000);
+      }, 3000);
       return () => clearTimeout(timer);
     }
   }, [reason]);
@@ -3134,7 +3094,11 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
        }
     }
 
-    // Note: full and low alarms MUST be manually swiped and cannot auto-stop!
+    // 98% (full) alarm auto stops as soon as the charger is unplugged
+    if (reason === 'full' && !battery.charging) {
+       console.log("98% Full alarm auto stops because charger was unplugged");
+       if (onStopRef.current) onStopRef.current(true);
+    }
   }, [battery.charging, reason]);
 
   useEffect(() => {
@@ -3382,33 +3346,50 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
       </div>
 
       <div className="w-full flex flex-col items-center space-y-6">
-        <div className="w-full max-w-[320px] relative h-20 bg-slate-900/50 rounded-full border border-slate-800 p-2 overflow-hidden">
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <p className="text-slate-500 font-bold uppercase text-xs tracking-widest">{t.swipeToDisarm}</p>
+        {/* Glowing live guidance indicator */}
+        {(reason === 'full' || reason === 'low') && (
+          <div className="w-full max-w-[320px] p-4 rounded-2xl border text-center transition-all duration-300 bg-red-500/10 border-red-500/20 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.1)]">
+            <p className="text-sm font-black uppercase tracking-wider text-red-400">
+              {reason === 'low' ? "Please connect charger" : "Please remove charger"}
+            </p>
+            <p className="text-[11px] font-sans font-bold text-slate-400 mt-1">
+              {reason === 'low' ? "कृपया चार्जर कनेक्ट करें" : "कृपया चार्जर अनप्लग करें"}
+            </p>
           </div>
-          
+        )}
+
+        {errorMessage && (
           <motion.div 
-            drag="x"
-            dragConstraints={{ left: 0, right: 240 }}
-            dragElastic={0}
-            onDragEnd={(_, info) => {
-              if (info.offset.x > 200) {
-                setIsSwiped(true);
-                setTimeout(() => onStop(true), 200); // Manual swipe disarms monitoring
-              }
-            }}
-            animate={isSwiped ? { x: 240 } : { x: 0 }}
-            className="relative z-10 w-16 h-16 bg-accent rounded-full flex items-center justify-center cursor-grab active:cursor-grabbing accent-glow"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="w-full max-w-[320px] px-4 py-2.5 bg-red-600 rounded-2xl text-white text-[11px] font-extrabold uppercase tracking-wider text-center shadow-[0_4px_16px_rgba(220,38,38,0.3)] animate-bounce"
           >
-            <ChevronRight size={32} className="text-black" />
+            {errorMessage}
           </motion.div>
-        </div>
+        )}
+
+        {/* Premium Pulsing Disable Alarm Button - Render ONLY on 20% Low Battery Alarm ('low') */}
+        {reason === 'low' && (
+          <div className="w-full flex justify-center">
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              whileHover={{ scale: 1.02 }}
+              onClick={() => {
+                setErrorMessage(null);
+                onStop(true); // Manual button disarms monitoring and triggers ads directly
+              }}
+              className="w-full max-w-[320px] py-4 px-8 rounded-2xl font-black text-sm uppercase tracking-wider text-center transition-all duration-300 shadow-xl border cursor-pointer bg-gradient-to-r from-emerald-500 to-teal-400 border-emerald-500/20 text-black shadow-emerald-500/10 hover:from-emerald-400 hover:to-teal-300 animate-pulse"
+            >
+              Disable Alarm
+            </motion.button>
+          </div>
+        )}
 
         {reason !== 'low' && reason !== 'full' && (
           <div className="flex gap-4">
             <button 
               onClick={handleSnooze}
-              className="flex items-center gap-2 px-6 py-3 bg-slate-900 border border-slate-800 rounded-full text-slate-400 hover:text-white transition-all active:scale-95"
+              className="flex items-center gap-2 px-6 py-3 bg-slate-900 border border-slate-800 rounded-full text-slate-400 hover:text-white transition-all active:scale-95 cursor-pointer"
             >
               <Moon size={16} />
               <span className="text-[10px] font-bold uppercase tracking-widest">{t.snooze}</span>
@@ -3416,7 +3397,7 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
             
             <button 
               onClick={() => onStop(false)}
-              className="flex items-center gap-2 px-6 py-3 bg-slate-900 border border-slate-800 rounded-full text-accent hover:bg-accent hover:text-black transition-all active:scale-95"
+              className="flex items-center gap-2 px-6 py-3 bg-slate-900 border border-slate-800 rounded-full text-accent hover:bg-accent hover:text-black transition-all active:scale-95 cursor-pointer"
             >
               <Settings size={16} />
               <span className="text-[10px] font-bold uppercase tracking-widest">{t.changeGoal}</span>
