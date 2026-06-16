@@ -1654,6 +1654,12 @@ function GoogleAdScreen({ duration = 15, onClose, t }: { duration?: number, onCl
   const [secondsLeft, setSecondsLeft] = useState(duration);
   const [showHtmlAd, setShowHtmlAd] = useState(true);
 
+  // Keep a stable ref to onClose to completely prevent re-running the AdMob useEffect!
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   useEffect(() => {
     setSecondsLeft(duration);
   }, [duration]);
@@ -1666,7 +1672,7 @@ function GoogleAdScreen({ duration = 15, onClose, t }: { duration?: number, onCl
       setSecondsLeft((prev) => {
         if (prev <= 1) {
           clearInterval(interval);
-          onClose();
+          onCloseRef.current();
           return 0;
         }
         return prev - 1;
@@ -1674,7 +1680,7 @@ function GoogleAdScreen({ duration = 15, onClose, t }: { duration?: number, onCl
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [onClose, showHtmlAd]);
+  }, [showHtmlAd]);
 
   // Dynamically load & trigger real Native AdMob Interstitial on mobile devices!
   useEffect(() => {
@@ -1694,7 +1700,7 @@ function GoogleAdScreen({ duration = 15, onClose, t }: { duration?: number, onCl
           } catch (e) {
             console.warn("Error removing listeners:", e);
           }
-          onClose();
+          onCloseRef.current();
         }
       };
 
@@ -1766,7 +1772,7 @@ function GoogleAdScreen({ duration = 15, onClose, t }: { duration?: number, onCl
         } catch (e) {}
       };
     }
-  }, [onClose]);
+  }, []); // Run EXACTLY ONCE on component mount
 
   // If native interstitial is rendering or playing, don't obstruct the user
   if (!showHtmlAd) {
