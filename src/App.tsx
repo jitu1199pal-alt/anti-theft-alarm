@@ -77,12 +77,10 @@ import { GoogleAdMob } from './components/GoogleAdMob';
 // =====================================================================
 // CREATEGUARD: Replace these with your actual live AdMob Ad Unit IDs from AdMob Console!
 export const AD_CONFIG = {
-  // 1. Android Ad Unit IDs (Testing Mode Activated)
+  // 1. Android Ad Unit IDs (Production Mode Activated)
   android: {
-    // REAL BANNER ID: ca-app-pub-2585981026340393/9149642997
-    banner: 'ca-app-pub-3940256099942544/6300978111',       // Google Official Test Banner ID
-    // REAL INTERSTITIAL ID: ca-app-pub-2585981026340393/3532685935
-    interstitial: 'ca-app-pub-3940256099942544/1033173712', // Google Official Test Interstitial ID
+    banner: 'ca-app-pub-2585981026340393/9149642997',       // Real production Android Banner ID
+    interstitial: 'ca-app-pub-2585981026340393/3532685935', // Real production Android Interstitial ID
   },
   // 2. iOS Ad Unit IDs (For completeness/future deployment)
   ios: {
