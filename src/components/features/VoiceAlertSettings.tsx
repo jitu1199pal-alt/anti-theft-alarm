@@ -12,6 +12,7 @@ interface VoiceAlertSettingsProps {
 
 export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSettingsProps) {
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const presets = [
     {
@@ -53,42 +54,48 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
   };
 
   const handleSpeechSpeak = (text: string, type: 'connect' | 'full') => {
-    if (!('speechSynthesis' in window)) {
-      alert("Text-to-speech is not supported in this browser environment.");
+    if (typeof window === 'undefined' || !('speechSynthesis' in window) || !window.speechSynthesis) {
+      setErrorMsg("Text-to-speech is not supported in this browser environment. Please install or enable a Text-to-Speech engine in your mobile settings.");
       return;
     }
     
-    // Stop any ongoing speech
-    window.speechSynthesis.cancel();
+    try {
+      // Stop any ongoing speech
+      window.speechSynthesis.cancel();
 
-    setPlayingVoice(`${type}_active`);
-    const utterance = new SpeechSynthesisUtterance(text);
-    
-    // Get english/hindi voices
-    const voices = window.speechSynthesis.getVoices();
-    
-    // Try to find natural voices
-    // If presets are Hindi comedy, find a Hindi vocal system if available
-    if (text.includes('bhai') || text.includes('khana')) {
-      utterance.voice = voices.find(v => v.lang.startsWith('hi') || v.lang.startsWith('in')) || null;
-      if (utterance.voice) utterance.lang = 'hi-IN';
-    } else {
-      utterance.voice = voices.find(v => v.lang.startsWith('en')) || null;
-      utterance.lang = 'en-US';
+      setPlayingVoice(`${type}_active`);
+      const utterance = new SpeechSynthesisUtterance(text);
+      
+      // Get english/hindi voices
+      const voices = window.speechSynthesis.getVoices();
+      
+      // Try to find natural voices
+      // If presets are Hindi comedy, find a Hindi vocal system if available
+      if (text.includes('bhai') || text.includes('khana')) {
+        utterance.voice = voices.find(v => v.lang.startsWith('hi') || v.lang.startsWith('in')) || null;
+        if (utterance.voice) utterance.lang = 'hi-IN';
+      } else {
+        utterance.voice = voices.find(v => v.lang.startsWith('en')) || null;
+        utterance.lang = 'en-US';
+      }
+
+      utterance.volume = config.volume / 100;
+      utterance.rate = 1.0;
+      utterance.pitch = type === 'connect' ? 1.0 : 1.1;
+
+      utterance.onend = () => {
+        setPlayingVoice(null);
+      };
+      utterance.onerror = (err) => {
+        setPlayingVoice(null);
+        console.warn("Speech synthesis trigger warning:", err);
+      };
+
+      window.speechSynthesis.speak(utterance);
+    } catch (e) {
+      console.error(e);
+      setErrorMsg("Failed to play Speech. Your device engine raised an initialization error.");
     }
-
-    utterance.volume = config.volume / 100;
-    utterance.rate = 1.0;
-    utterance.pitch = type === 'connect' ? 1.0 : 1.1;
-
-    utterance.onend = () => {
-      setPlayingVoice(null);
-    };
-    utterance.onerror = () => {
-      setPlayingVoice(null);
-    };
-
-    window.speechSynthesis.speak(utterance);
   };
 
   return (
@@ -110,6 +117,23 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
         </div>
         <div className="p-2 bg-[#00FF88]/15 text-[#00FF88] rounded-xl"><Speech size={20} /></div>
       </header>
+
+      {errorMsg && (
+        <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex items-center justify-between text-left">
+          <div className="flex-1 min-w-0 pr-2">
+            <span className="text-[9px] uppercase tracking-wider text-rose-400 font-extrabold block">TTS NOTICE / सूचना</span>
+            <p className="text-[11px] text-rose-200 mt-1 leading-normal font-medium">
+              {errorMsg}
+            </p>
+          </div>
+          <button 
+            onClick={() => setErrorMsg(null)}
+            className="p-1 px-2 bg-white/5 hover:bg-white/10 rounded-xl text-[10px] font-bold text-slate-400 cursor-pointer transition-colors"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Main Switch Panel */}
       <div className="bento-card p-5 space-y-4 bg-slate-950 border border-white/5">
