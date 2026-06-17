@@ -6,6 +6,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.PowerManager;
 import android.provider.Settings;
+import android.media.AudioManager;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -18,6 +19,9 @@ public class AlarmServicePlugin extends Plugin {
     public static boolean isServiceRunning = false;
     public static boolean activeAlarmTriggered = false;
     public static String activeAlarmReason = null;
+
+    private android.media.AudioTrack nativeEarpieceTrack = null;
+    private boolean isNativeEarpiecePlaying = false;
 
     public static void setAlarmState(boolean alarming, String reason) {
         activeAlarmTriggered = alarming;
@@ -541,5 +545,189 @@ public class AlarmServicePlugin extends Plugin {
         JSObject result = new JSObject();
         result.put("capacity", capacityInt);
         call.resolve(result);
+    }
+
+    @PluginMethod
+    public void setAudioRoute(PluginCall call) {
+        String mode = call.getString("mode", "reset");
+        try {
+            Context context = getContext();
+            android.media.AudioManager audioManager = (android.media.AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+            if (audioManager != null) {
+                if ("earpiece".equals(mode)) {
+                    audioManager.setMode(android.media.AudioManager.MODE_IN_COMMUNICATION);
+                    android.util.Log.d("AlarmServicePlugin", "DEBUG AUDIO: Audio mode changed");
+                    
+                    audioManager.setSpeakerphoneOn(false);
+                    android.util.Log.d("AlarmServicePlugin", "DEBUG AUDIO: Speakerphone disabled");
+
+                    if (audioManager.isBluetoothScoOn()) {
+                        audioManager.stopBluetoothSco();
+                        audioManager.setBluetoothScoOn(false);
+                    }
+
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                        java.util.List<android.media.AudioDeviceInfo> devices = audioManager.getAvailableCommunicationDevices();
+                        for (android.media.AudioDeviceInfo device : devices) {
+                            if (device.getType() == android.media.AudioDeviceInfo.TYPE_BUILTIN_EARPIECE) {
+                                audioManager.setCommunicationDevice(device);
+                                break;
+                            }
+                        }
+                    }
+                    android.util.Log.d("AlarmServicePlugin", "DEBUG AUDIO: Earpiece route active");
+                } else if ("speaker".equals(mode)) {
+                    audioManager.setMode(android.media.AudioManager.MODE_NORMAL);
+                    android.util.Log.d("AlarmServicePlugin", "DEBUG AUDIO: Audio mode changed");
+
+                    audioManager.setSpeakerphoneOn(true);
+                    
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                        audioManager.clearCommunicationDevice();
+                    }
+                    android.util.Log.d("AlarmServicePlugin", "DEBUG AUDIO: Loudspeaker route active");
+                } else {
+                    audioManager.setMode(android.media.AudioManager.MODE_NORMAL);
+                    android.util.Log.d("AlarmServicePlugin", "DEBUG AUDIO: Audio mode changed");
+                    
+                    audioManager.setSpeakerphoneOn(false);
+                    
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                        audioManager.clearCommunicationDevice();
+                    }
+                    android.util.Log.d("AlarmServicePlugin", "DEBUG AUDIO: Audio route reset to normal");
+                }
+            }
+            JSObject result = new JSObject();
+            result.put("success", true);
+            call.resolve(result);
+        } catch (Exception e) {
+            call.reject("Failed to set audio route: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void startEarpieceTone(PluginCall call) {
+        try {
+            Context context = getContext();
+            android.media.AudioManager audioManager = (android.media.AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+            
+            if (audioManager != null) {
+                // Set to IN_COMMUNICATION to enable VoIP/Earpiece routing
+                audioManager.setMode(android.media.AudioManager.MODE_IN_COMMUNICATION);
+                audioManager.setSpeakerphoneOn(false);
+                
+                if (audioManager.isBluetoothScoOn()) {
+                    audioManager.stopBluetoothSco();
+                    audioManager.setBluetoothScoOn(false);
+                }
+
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                    java.util.List<android.media.AudioDeviceInfo> devices = audioManager.getAvailableCommunicationDevices();
+                    for (android.media.AudioDeviceInfo device : devices) {
+                        if (device.getType() == android.media.AudioDeviceInfo.TYPE_BUILTIN_EARPIECE) {
+                            audioManager.setCommunicationDevice(device);
+                            android.util.Log.d("AlarmServicePlugin", "Set active communication device to Built-in Earpiece");
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Clean up any previously playing tone
+            stopNativeToneInternal();
+
+            isNativeEarpiecePlaying = true;
+            
+            int sampleRate = 44100;
+            // High frequency (approx 1000Hz or 1200Hz is standard for clean earpiece testing)
+            int frequencyHz = call.getInt("frequency", 1200);
+            int numSamples = sampleRate; // 1 second loop buffer
+            double[] sample = new double[numSamples];
+            byte[] generatedSnd = new byte[2 * numSamples];
+            
+            for (int i = 0; i < numSamples; ++i) {
+                sample[i] = Math.sin(2 * Math.PI * i / ((double) sampleRate / frequencyHz));
+            }
+            
+            int idx = 0;
+            for (final double dVal : sample) {
+                // 50% comfortable receiver volume
+                final short val = (short) ((dVal * 32767.0 * 0.50));
+                generatedSnd[idx++] = (byte) (val & 0x00ff);
+                generatedSnd[idx++] = (byte) ((val & 0xff00) >>> 8);
+            }
+            
+            android.media.AudioAttributes attributes = new android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build();
+                    
+            android.media.AudioFormat format = new android.media.AudioFormat.Builder()
+                    .setSampleRate(sampleRate)
+                    .setEncoding(android.media.AudioFormat.ENCODING_PCM_16BIT)
+                    .setChannelMask(android.media.AudioFormat.CHANNEL_OUT_MONO)
+                    .build();
+                    
+            nativeEarpieceTrack = new android.media.AudioTrack(
+                    attributes,
+                    format,
+                    generatedSnd.length,
+                    android.media.AudioTrack.MODE_STATIC,
+                    android.media.AudioManager.AUDIO_SESSION_ID_GENERATE
+            );
+            
+            nativeEarpieceTrack.write(generatedSnd, 0, generatedSnd.length);
+            nativeEarpieceTrack.setLoopPoints(0, numSamples, -1); // looping indefinitely
+            nativeEarpieceTrack.play();
+
+            android.util.Log.d("AlarmServicePlugin", "Native looping earpiece audio track started successfully!");
+
+            JSObject result = new JSObject();
+            result.put("success", true);
+            call.resolve(result);
+        } catch (Exception e) {
+            call.reject("Failed to start earpiece: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void stopEarpieceTone(PluginCall call) {
+        try {
+            stopNativeToneInternal();
+            
+            Context context = getContext();
+            android.media.AudioManager audioManager = (android.media.AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+            if (audioManager != null) {
+                audioManager.setMode(android.media.AudioManager.MODE_NORMAL);
+                audioManager.setSpeakerphoneOn(false);
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                    audioManager.clearCommunicationDevice();
+                }
+            }
+            
+            android.util.Log.d("AlarmServicePlugin", "Native earpiece audio track stopped successfully!");
+
+            JSObject result = new JSObject();
+            result.put("success", true);
+            call.resolve(result);
+        } catch (Exception e) {
+            call.reject("Failed to stop earpiece: " + e.getMessage());
+        }
+    }
+
+    private void stopNativeToneInternal() {
+        isNativeEarpiecePlaying = false;
+        if (nativeEarpieceTrack != null) {
+            try {
+                if (nativeEarpieceTrack.getPlayState() == android.media.AudioTrack.PLAYSTATE_PLAYING) {
+                    nativeEarpieceTrack.stop();
+                }
+                nativeEarpieceTrack.release();
+            } catch (Exception e) {
+                // suppress release exception
+            }
+            nativeEarpieceTrack = null;
+        }
     }
 }

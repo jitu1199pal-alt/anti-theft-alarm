@@ -129,19 +129,13 @@ export function BatteryAvatar({ level, charging, temperature, onBoost }: Battery
         </p>
       </div>
 
-      <div className="mt-4 flex gap-2 w-full max-w-[280px]">
-        <button
-          onClick={handleInteract}
-          className="flex-1 py-2 px-3 bg-indigo-500 hover:bg-indigo-600 text-white font-extrabold text-[10px] uppercase tracking-widest rounded-xl transition-all shadow-[0_4px_10px_rgba(99,102,241,0.2)] active:scale-95"
-        >
-          👋 Interact / बात करें
-        </button>
+      <div className="mt-4 w-full max-w-[280px]">
         <button
           onClick={() => {
             handleInteract();
             if (onBoost) onBoost();
           }}
-          className="flex-1 py-2 px-3 bg-emerald-500 hover:bg-emerald-600 text-black font-extrabold text-[10px] uppercase tracking-widest rounded-xl transition-all shadow-[0_4px_10px_rgba(16,185,129,0.2)] active:scale-95"
+          className="w-full py-2.5 px-3 bg-emerald-500 hover:bg-emerald-600 text-black font-extrabold text-[10px] uppercase tracking-widest rounded-xl transition-all shadow-[0_4px_10px_rgba(16,185,129,0.2)] active:scale-95 flex items-center justify-center gap-1.5"
         >
           🚀 Feed Boost / बूस्ट
         </button>

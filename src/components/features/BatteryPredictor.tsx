@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { ChevronLeft, HelpCircle, ArrowRight, Play, Gamepad, MessageSquare, PhoneCall, Music, CheckCircle2 } from 'lucide-react';
 import { BatteryState } from '../../types';
+import { GoogleNativeAppAd } from '../GoogleAdMob';
 
 interface BatteryPredictorProps {
   battery: BatteryState;
@@ -120,7 +121,7 @@ export function BatteryPredictor({ battery, onBack }: BatteryPredictorProps) {
             <ChevronLeft size={20} className="text-white" />
           </button>
           <div>
-            <span className="text-[9px] uppercase tracking-wider text-accent font-extrabold">Predictor</span>
+            <span className="text-[9px] uppercase tracking-wider text-accent font-extrabold font-sans">Predictor</span>
             <h1 className="text-xl font-black text-white">Battery Health Predictor</h1>
           </div>
         </div>
@@ -148,13 +149,18 @@ export function BatteryPredictor({ battery, onBack }: BatteryPredictorProps) {
           {isCharging ? 'Battery is gaining active hours' : 'Estimated operation left based on usage / उपलब्ध समय'}
         </p>
 
-        <div className="flex items-center justify-between mt-6 bg-white/5 border border-white/10 rounded-2xl p-3.5 relative z-10">
-          <div className="text-left">
-            <span className="text-[9px] uppercase tracking-widest text-slate-500 font-bold">{getDynamicChemistry()}</span>
+        <div className="flex items-center justify-between mt-6 bg-white/5 border border-white/10 rounded-2xl p-3.5 relative z-10 font-sans">
+          <div className="text-left font-sans">
+            <span className="text-[9px] uppercase tracking-widest text-slate-500 font-bold block">{getDynamicChemistry()}</span>
             <p className="text-sm font-black text-emerald-400 font-sans tracking-tight">Healthy Condition ({currentSOH}%)</p>
           </div>
           <span className="text-xs font-black text-indigo-400">{getDynamicStatus()}</span>
         </div>
+      </div>
+
+      {/* Native Ad 1 */}
+      <div className="my-2">
+        <GoogleNativeAppAd />
       </div>
 
       {/* Daily Check-In Option Section */}
@@ -169,7 +175,7 @@ export function BatteryPredictor({ battery, onBack }: BatteryPredictorProps) {
         {checking ? (
           <div className="flex items-center gap-3 py-2 text-[#00FF88]">
             <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
-            <span className="text-xs font-black uppercase tracking-wider animate-pulse">Deep Chemistry Testing...</span>
+            <span className="text-xs font-black uppercase tracking-wider animate-pulse font-sans">Deep Chemistry Testing...</span>
           </div>
         ) : checkedIn ? (
           <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center justify-between">
@@ -183,11 +189,16 @@ export function BatteryPredictor({ battery, onBack }: BatteryPredictorProps) {
         ) : (
           <button
             onClick={handleCheckIn}
-            className="w-full py-3 bg-white hover:bg-slate-100 text-black font-extrabold text-xs uppercase tracking-widest rounded-2xl transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1"
+            className="w-full py-3 bg-white hover:bg-slate-100 text-black font-extrabold text-xs uppercase tracking-widest rounded-2xl transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1 font-sans"
           >
             📋 INSPECT CHEMISTRY / जाचें <ArrowRight size={14} />
           </button>
         )}
+      </div>
+
+      {/* Native Ad 2 */}
+      <div className="my-2">
+        <GoogleNativeAppAd />
       </div>
 
       {/* Usage breakdown estimation list */}
@@ -210,7 +221,7 @@ export function BatteryPredictor({ battery, onBack }: BatteryPredictorProps) {
                   </div>
                   <div>
                     <h4 className="text-xs font-bold text-white tracking-wide">{item.activity}</h4>
-                    <span className="text-[9px] text-slate-500 font-medium font-sans">Relative consumption factor</span>
+                    <span className="text-[9px] text-slate-500 font-medium font-sans block">Relative consumption factor</span>
                   </div>
                 </div>
 
@@ -224,7 +235,7 @@ export function BatteryPredictor({ battery, onBack }: BatteryPredictorProps) {
                       </>
                     )}
                   </p>
-                  <span className="text-[8px] text-slate-500 font-bold uppercase tracking-wider font-sans">Duration</span>
+                  <span className="text-[8px] text-slate-500 font-bold uppercase tracking-wider font-sans block mt-1">Duration</span>
                 </div>
               </div>
             );

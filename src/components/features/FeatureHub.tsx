@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { Zap, Play, Trash2, Speech, Smartphone, Bell, HelpCircle, Activity, ShieldCheck, Gamepad } from 'lucide-react';
 import { Screen, AlarmConfig } from '../../types';
 import { BatteryAvatar } from './BatteryAvatar';
+import { GoogleNativeAppAd } from '../GoogleAdMob';
 
 interface FeatureHubProps {
   battery: {
@@ -14,9 +15,10 @@ interface FeatureHubProps {
   setAlarmConfig: React.Dispatch<React.SetStateAction<AlarmConfig>>;
   setScreen: (s: Screen) => void;
   onBoostIcon: () => void;
+  triggerInterstitial?: (onDismiss: () => void) => void;
 }
 
-export function FeatureHub({ battery, alarmConfig, setAlarmConfig, setScreen, onBoostIcon }: FeatureHubProps) {
+export function FeatureHub({ battery, alarmConfig, setAlarmConfig, setScreen, onBoostIcon, triggerInterstitial }: FeatureHubProps) {
   
   const tools = [
     {
@@ -69,6 +71,35 @@ export function FeatureHub({ battery, alarmConfig, setAlarmConfig, setScreen, on
     }
   ];
 
+  const handleToolClick = (targetScreen: Screen) => {
+    if (triggerInterstitial) {
+      triggerInterstitial(() => {
+        setScreen(targetScreen);
+      });
+    } else {
+      setScreen(targetScreen);
+    }
+  };
+
+  const renderToolCard = (t: typeof tools[0]) => (
+    <div
+      onClick={() => handleToolClick(t.screen)}
+      className="p-5 bento-card border border-white/5 bg-slate-950/80 hover:bg-slate-950 hover:border-[#00FF88]/20 transition-all cursor-pointer flex gap-4 items-start relative overflow-hidden group"
+    >
+      <div className="absolute inset-0 bg-gradient-to-br from-[#00FF88]/2 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+      
+      <div className={`p-3.5 rounded-[1.25rem] shrink-0 ${t.iconColor}`}>
+        <t.icon size={22} />
+      </div>
+
+      <div className="flex-1 text-left min-w-0 pr-2">
+        <span className="text-[9px] font-black uppercase text-slate-500 tracking-wide block">{t.subtitle}</span>
+        <h4 className="text-sm font-black text-white mt-1 leading-snug">{t.title}</h4>
+        <p className="text-[10.5px] text-slate-400 mt-1 leading-normal pr-1">{t.desc}</p>
+      </div>
+    </div>
+  );
+
   return (
     <motion.div 
       initial={{ opacity: 0 }} 
@@ -98,26 +129,33 @@ export function FeatureHub({ battery, alarmConfig, setAlarmConfig, setScreen, on
       <div className="space-y-4">
         <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 leading-none">Diagnostic & Customizer Suite</h3>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {tools.map((t, idx) => (
-            <div
-              key={idx}
-              onClick={() => setScreen(t.screen)}
-              className="p-5 bento-card border border-white/5 bg-slate-950/80 hover:bg-slate-950 hover:border-[#00FF88]/20 transition-all cursor-pointer flex gap-4 items-start relative overflow-hidden group"
-            >
-              <div className="absolute inset-0 bg-gradient-to-br from-[#00FF88]/2 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-              
-              <div className={`p-3.5 rounded-[1.25rem] shrink-0 ${t.iconColor}`}>
-                <t.icon size={22} />
-              </div>
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {renderToolCard(tools[0])}
+            {renderToolCard(tools[1])}
+          </div>
 
-              <div className="flex-1 text-left min-w-0 pr-2">
-                <span className="text-[9px] font-black uppercase text-slate-500 tracking-wide block">{t.subtitle}</span>
-                <h4 className="text-sm font-black text-white mt-1 leading-snug">{t.title}</h4>
-                <p className="text-[10.5px] text-slate-400 mt-1 leading-normal pr-1">{t.desc}</p>
-              </div>
-            </div>
-          ))}
+          <div className="my-1">
+            <GoogleNativeAppAd />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {renderToolCard(tools[2])}
+            {renderToolCard(tools[3])}
+          </div>
+
+          <div className="my-1">
+            <GoogleNativeAppAd />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {renderToolCard(tools[4])}
+            {renderToolCard(tools[5])}
+          </div>
+
+          <div className="my-1">
+            <GoogleNativeAppAd />
+          </div>
         </div>
       </div>
 

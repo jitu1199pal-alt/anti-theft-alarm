@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Trash2, Shield, Zap, RefreshCw, X, ChevronLeft, CheckCircle, Database, Cpu, HardDrive } from 'lucide-react';
+import { GoogleNativeAppAd } from '../GoogleAdMob';
 
 interface JunkCleanerProps {
   onBack: () => void;
@@ -189,9 +190,14 @@ export function JunkCleaner({ onBack }: JunkCleanerProps) {
         </div>
       </div>
 
+      {/* Native Ad 1 */}
+      <div className="my-1">
+        <GoogleNativeAppAd />
+      </div>
+
       {/* Main Booster Dashboard */}
       <div className="bento-card p-6 flex flex-col items-center justify-center text-center relative overflow-hidden bg-slate-950/80 border border-white/5">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,#d946ef05,transparent_65%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,#d946ef05,transparent_65%)] pointer-events-none" />
 
         {stage === 'idle' && (
           <div className="space-y-6 py-6 w-full flex flex-col items-center">
@@ -348,6 +354,11 @@ export function JunkCleaner({ onBack }: JunkCleanerProps) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Native Ad 2 */}
+      <div className="my-2">
+        <GoogleNativeAppAd />
+      </div>
 
       {/* Safety Instructions */}
       <div className="bento-card p-5 space-y-2.5 bg-slate-900/40 text-left">

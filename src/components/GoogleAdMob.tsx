@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { Star, ShieldAlert } from 'lucide-react';
 
 // Dynamically check if AdMob is available to prevent compile-time/run-time errors
 // if loaded in environment without native builds
@@ -70,7 +71,7 @@ export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({
   format = 'auto', 
   responsive = 'true',
   style = { display: 'block' },
-  position = 'TOP_CENTER'
+  position = 'BOTTOM_CENTER'
 }) => {
   const isNative = Capacitor.isNativePlatform();
   const [admobLoaded, setAdmobLoaded] = useState(false);
@@ -209,8 +210,24 @@ export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({
           activeMounts = 0;
         }
         console.log("AdMob: Component unmounted, remaining active mounts:", activeMounts);
-        // We DO NOT automatically remove the banner overlay here during component transitions.
-        // This keeps the exact same loaded banner ad active and seamless across screens.
+        
+        if (activeMounts === 0) {
+          // If no more AdMob banner components are mounted on the active screen,
+          // remove the native banner overlay after a tiny delay to allow transitions.
+          if (destroyTimeoutId) {
+            clearTimeout(destroyTimeoutId);
+          }
+          destroyTimeoutId = setTimeout(async () => {
+            try {
+              if (activeMounts === 0) {
+                await removeGlobalBanner();
+                console.log("AdMob: Last banner unmounted. Native banner hidden.");
+              }
+            } catch (err) {
+              console.warn("Failed to hide banner on unmount:", err);
+            }
+          }, 150);
+        }
       }
     };
   }, [isNative, slot]);
@@ -271,3 +288,57 @@ export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({
     </div>
   );
 };
+
+interface GoogleNativeAppAdProps {
+  onInstall?: () => void;
+}
+
+export const GoogleNativeAppAd: React.FC<GoogleNativeAppAdProps> = ({ onInstall }) => {
+  const handleInstallClick = () => {
+    if (onInstall) {
+      onInstall();
+    } else {
+      alert("Redirecting to safe Play Store download page...");
+    }
+  };
+
+  return (
+    <div className="w-full bg-[#0a0f1d] border border-white/10 rounded-2xl p-3 flex items-center justify-between gap-3 shadow-lg relative overflow-hidden backdrop-blur-sm self-start mb-4">
+      {/* Absolute top badge representing Sponsored */}
+      <div className="absolute top-0 right-0 bg-amber-500/15 text-amber-500 border-l border-b border-white/10 px-2 py-0.5 rounded-bl-lg text-[7px] font-mono tracking-widest uppercase font-black">
+        Sponsored / AD
+      </div>
+      
+      <div className="flex items-center gap-3">
+        {/* App Icon */}
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#00FF88] to-blue-500 p-0.5 shadow-md flex items-center justify-center shrink-0">
+          <div className="w-full h-full bg-slate-950 rounded-[9px] flex items-center justify-center">
+            <ShieldAlert size={18} className="text-[#00FF88] animate-pulse" />
+          </div>
+        </div>
+        
+        {/* Ad Title & Text */}
+        <div className="text-left">
+          <div className="flex items-center gap-1.5">
+            <h4 className="text-[10px] font-black text-white leading-none uppercase tracking-wide">Kavach Booster & Cleaner</h4>
+            <div className="flex items-center gap-0.5 text-amber-500 leading-none">
+              <Star size={7} className="fill-current" />
+              <span className="text-[7.5px] font-mono font-bold leading-none">4.9</span>
+            </div>
+          </div>
+          <p className="text-[8.5px] text-[#00FF88] font-bold mt-1">10M+ Downloads • Secure APK</p>
+          <p className="text-[8.5px] text-slate-400 mt-0.5 leading-tight">1-click background memory boost & screen overlay shield.</p>
+        </div>
+      </div>
+      
+      {/* Call to Action button */}
+      <button 
+        onClick={handleInstallClick}
+        className="px-3 py-1.5 bg-[#00FF88] text-black font-black text-[9px] uppercase tracking-wider rounded-lg hover:bg-[#00e077] hover:scale-105 active:scale-95 transition-all shadow-[0_3px_10px_rgba(0,255,136,0.3)] shrink-0"
+      >
+        Install ➔
+      </button>
+    </div>
+  );
+};
+

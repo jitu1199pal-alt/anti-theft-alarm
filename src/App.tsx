@@ -60,6 +60,9 @@ interface AlarmServicePluginType {
     lowBatteryPercentage: number;
     vibrate: boolean;
   }): Promise<{ success: boolean }>;
+  setAudioRoute(options: { mode: 'earpiece' | 'speaker' | 'reset' }): Promise<{ success: boolean }>;
+  startEarpieceTone(options: { frequency: number }): Promise<{ success: boolean }>;
+  stopEarpieceTone(): Promise<{ success: boolean }>;
 }
 
 const AlarmService = registerPlugin<AlarmServicePluginType>('AlarmService');
@@ -71,7 +74,7 @@ import { translations } from './translations';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { GoogleAdMob, removeGlobalBanner } from './components/GoogleAdMob';
+import { GoogleAdMob, removeGlobalBanner, GoogleNativeAppAd } from './components/GoogleAdMob';
 import { FeatureHub } from './components/features/FeatureHub';
 import { ChargingSpeedTest } from './components/features/ChargingSpeedTest';
 import { BatteryPredictor } from './components/features/BatteryPredictor';
@@ -85,15 +88,14 @@ import { StickyNotificationPreview } from './components/features/StickyNotificat
 // =====================================================================
 // CREATEGUARD: Replace these with your actual live AdMob Ad Unit IDs from AdMob Console!
 export const AD_CONFIG = {
-  // 1. Android Ad Unit IDs (Production Mode Activated)
+  // Official Google AdMob Test IDs
   android: {
-    banner: 'ca-app-pub-2585981026340393/9149642997',       // Real production Android Banner ID
-    interstitial: 'ca-app-pub-2585981026340393/3532685935', // Real production Android Interstitial ID
+    banner: 'ca-app-pub-3940256099942544/6300978111',       // Official Android Test Banner ID
+    interstitial: 'ca-app-pub-3940256099942544/1033173712', // Official Android Test Interstitial ID
   },
-  // 2. iOS Ad Unit IDs (Production Mode Activated)
   ios: {
-    banner: 'ca-app-pub-2585981026340393/9149642997',       // Real production iOS Banner ID
-    interstitial: 'ca-app-pub-2585981026340393/3532685935', // Real production iOS Interstitial ID
+    banner: 'ca-app-pub-3940256099942544/2934735716',       // Official iOS Test Banner ID
+    interstitial: 'ca-app-pub-3940256099942544/4411468910', // Official iOS Test Interstitial ID
   }
 };
 
@@ -101,6 +103,76 @@ export const AD_CONFIG = {
 export function getAdUnitId(type: 'banner' | 'interstitial'): string {
   const isIos = Capacitor.getPlatform() === 'ios';
   return isIos ? AD_CONFIG.ios[type] : AD_CONFIG.android[type];
+}
+
+// Global helper to trigger AdMob Interstitial with a callback
+export async function triggerAdMobInterstitial(onDismiss: () => void) {
+  if (!Capacitor.isNativePlatform()) {
+    console.log("AdMob Interstitial: Simulated run on web (Success callback triggered).");
+    onDismiss();
+    return;
+  }
+
+  let dismissedSub: any = null;
+  let failedSub: any = null;
+
+  const cleanupListeners = () => {
+    try {
+      if (dismissedSub) dismissedSub.remove();
+      if (failedSub) failedSub.remove();
+    } catch (e) {
+      console.warn("AdMob trigger: Error removing listeners:", e);
+    }
+  };
+
+  const proceed = () => {
+    cleanupListeners();
+    onDismiss();
+    // Warm up the next interstitial in the background
+    preloadAdMobInterstitial();
+  };
+
+  try {
+    const { AdMob } = await import('@capacitor-community/admob');
+    
+    try {
+      await (AdMob as any).initialize({
+        requestTrackingAuthorization: true,
+        initializeForTesting: true, // test mode explicitly enabled
+      });
+    } catch (initErr) {
+      console.log("AdMob: Already initialized or failed silently:", initErr);
+    }
+
+    const finalAdId = getAdUnitId('interstitial');
+
+    // Setup event listeners inside the controller
+    dismissedSub = await (AdMob.addListener as any)('interstitialAdDismissed', () => {
+      console.log("AdMob trigger: Interstitial ad closed by the user.");
+      proceed();
+    });
+
+    failedSub = await (AdMob.addListener as any)('interstitialAdFailedToShow', (info: any) => {
+      console.warn("AdMob trigger: Interstitial failed to show:", info);
+      proceed();
+    });
+
+    // Try instantly showing cached interstitial or dynamically initialize and show
+    try {
+      await AdMob.showInterstitial();
+      console.log("AdMob trigger: Presented cached interstitial.");
+    } catch (showErr) {
+      console.log("AdMob trigger: Cache empty. Initializing a fresh one...", showErr);
+      await AdMob.prepareInterstitial({
+        adId: finalAdId,
+      });
+      await AdMob.showInterstitial();
+      console.log("AdMob trigger: Interstitial presented successfully.");
+    }
+  } catch (err) {
+    console.warn("Failed to present AdMob interstitial. Falling back directly:", err);
+    proceed();
+  }
 }
 
 // Helper to eagerly preload and cache native interstitial ad in background
@@ -134,8 +206,14 @@ export async function preloadAdMobInterstitial() {
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>(Screen.SPLASH);
-  const [theme, setTheme] = useState<Theme>('dark');
+  const [theme, setTheme] = useState<Theme>(() => {
+    return (localStorage.getItem('applet_theme') as Theme) || 'dark';
+  });
   const lang = 'en';
+
+  useEffect(() => {
+    localStorage.setItem('applet_theme', theme);
+  }, [theme]);
   const t = translations.en;
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -732,6 +810,26 @@ export default function App() {
         if (parsed && typeof parsed === 'object') {
           if (!parsed.batteryCapacity) parsed.batteryCapacity = 5000;
           if (parsed.vibrate === undefined) parsed.vibrate = true;
+
+          // Determine if the user has previously customized these percentages.
+          // If the saved percentages match old/other default systems and no custom flag exists,
+          // treat them as not customized so they adopt the new 20% & 98% defaults.
+          if (parsed.hasCustomizedLowBatteryPercentage === undefined) {
+            parsed.hasCustomizedLowBatteryPercentage = parsed.lowBatteryPercentage !== undefined && 
+              parsed.lowBatteryPercentage !== 20 && parsed.lowBatteryPercentage !== 15;
+          }
+          if (parsed.hasCustomizedTargetPercentage === undefined) {
+            parsed.hasCustomizedTargetPercentage = parsed.targetPercentage !== undefined && 
+              parsed.targetPercentage !== 98 && parsed.targetPercentage !== 80;
+          }
+
+          if (!parsed.hasCustomizedLowBatteryPercentage) {
+            parsed.lowBatteryPercentage = 20;
+          }
+          if (!parsed.hasCustomizedTargetPercentage) {
+            parsed.targetPercentage = 98;
+          }
+
           if (parsed.lowBatteryPercentage === undefined) parsed.lowBatteryPercentage = 20;
           if (parsed.targetPercentage === undefined) parsed.targetPercentage = 98;
           return parsed;
@@ -742,7 +840,7 @@ export default function App() {
     }
     return {
       targetPercentage: 98,
-      lowBatteryPercentage: 20, // Force 20% as requested
+      lowBatteryPercentage: 20,
       enabled: true,
       sound: AlarmSound.CYBER,
       volume: 80,
@@ -752,6 +850,8 @@ export default function App() {
       tempWarningLevel: 40,
       batteryCapacity: 5000,
       vibrate: true,
+      hasCustomizedLowBatteryPercentage: false,
+      hasCustomizedTargetPercentage: false,
     };
   });
 
@@ -1025,6 +1125,10 @@ export default function App() {
           nativePermissions={nativePermissions}
           hasOtherPermissionsConfirmed={hasOtherPermissionsConfirmed}
           setHasOtherPermissionsConfirmed={setHasOtherPermissionsConfirmed}
+          hasAutoStartConfirmed={hasAutoStartConfirmed}
+          setHasAutoStartConfirmed={setHasAutoStartConfirmed}
+          theme={theme}
+          setTheme={setTheme}
           onShare={async () => {
             try {
               if (Capacitor.isNativePlatform()) {
@@ -1050,7 +1154,7 @@ export default function App() {
           }}
         />
       );
-      case Screen.ALARM_SETTINGS: return <AlarmSettings config={alarmConfig} setConfig={setAlarmConfig} onBack={() => setScreen(Screen.HOME)} t={t} />;
+      case Screen.ALARM_SETTINGS: return <AlarmSettings config={alarmConfig} setConfig={setAlarmConfig} onBack={() => setScreen(Screen.HOME)} t={t} theme={theme} setTheme={setTheme} />;
       case Screen.SECURITY: return <SecurityScreen onBack={() => setScreen(Screen.HOME)} t={t} />;
       case Screen.HISTORY: return <HistoryScreen logs={chargingLogs} setLogs={setChargingLogs} chargingCycles={chargingCycles} onBack={() => setScreen(Screen.HOME)} t={t} />;
       case Screen.HEALTH: return <HealthScreen battery={battery} batteryCapacity={alarmConfig.batteryCapacity || 5000} chargingCycles={chargingCycles} onBack={() => setScreen(Screen.HOME)} t={t} />;
@@ -1118,6 +1222,7 @@ export default function App() {
             onBoostIcon={() => {
               speakText("Phone memory and background processes successfully boosted!");
             }} 
+            triggerInterstitial={triggerAdMobInterstitial}
           />
         );
       case Screen.SPEED_TEST:
@@ -1131,8 +1236,8 @@ export default function App() {
       case Screen.DIAGNOSTICS:
         return <HardwareDiagnostics onBack={() => setScreen(Screen.FEATURES)} />;
       case Screen.NOTIFICATION_PREVIEW:
-        return <StickyNotificationPreview battery={battery} config={alarmConfig} setConfig={setAlarmConfig} onBack={() => setScreen(Screen.FEATURES)} />;
-      default: return <HomeScreen battery={battery} config={alarmConfig} setConfig={setAlarmConfig} isMonitoring={isMonitoring} setMonitoring={setIsMonitoring} setScreen={setScreen} nativePermissions={nativePermissions} hasOtherPermissionsConfirmed={hasOtherPermissionsConfirmed} setHasOtherPermissionsConfirmed={setHasOtherPermissionsConfirmed} onTest={() => { setAlarmReason('test'); setScreen(Screen.LOCK); }} t={t} />;
+        return <StickyNotificationPreview battery={battery} config={alarmConfig} setConfig={setAlarmConfig} onBack={() => setScreen(Screen.FEATURES)} triggerInterstitial={triggerAdMobInterstitial} />;
+      default: return <HomeScreen battery={battery} config={alarmConfig} setConfig={setAlarmConfig} isMonitoring={isMonitoring} setMonitoring={setIsMonitoring} setScreen={setScreen} nativePermissions={nativePermissions} hasOtherPermissionsConfirmed={hasOtherPermissionsConfirmed} setHasOtherPermissionsConfirmed={setHasOtherPermissionsConfirmed} hasAutoStartConfirmed={hasAutoStartConfirmed} setHasAutoStartConfirmed={setHasAutoStartConfirmed} onTest={() => { setAlarmReason('test'); setScreen(Screen.LOCK); }} t={t} />;
   }
 };
 
@@ -1177,19 +1282,23 @@ export default function App() {
   return (
     <ErrorBoundary t={t}>
       <div className={cn(
-        "relative h-screen w-full max-w-[480px] mx-auto overflow-y-auto transition-colors duration-1000",
-        theme === 'dark' ? "bg-black text-white" : "bg-slate-50 text-slate-900",
-        theme === 'neon' && "bg-[#0b0c10] text-[#66fcf1]",
-        Capacitor.isNativePlatform() && screen !== Screen.SPLASH && screen !== Screen.LOCK ? "pb-[65px]" : ""
+        "relative h-screen w-full max-w-[480px] mx-auto overflow-y-auto transition-colors duration-500",
+        theme === 'light' ? "theme-light bg-slate-50 text-slate-900" : (theme === 'neon' ? "theme-neon bg-[#040108] text-[#00FF88]" : "bg-black text-white"),
+        screen !== Screen.SPLASH && screen !== Screen.LOCK ? "pt-20" : ""
       )}>
       {/* Dynamic Background Gradient */}
       <div className={cn(
         "absolute inset-0 opacity-20 pointer-events-none transition-all duration-1000",
         battery.charging ? "bg-[radial-gradient(circle_at_50%_0%,#22c55e_0%,transparent_70%)]" : "bg-[radial-gradient(circle_at_50%_0%,#3b82f6_0%,transparent_70%)]"
       )} />
-    <AnimatePresence mode="wait">
-      {renderScreen()}
-    </AnimatePresence>
+      {screen !== Screen.SPLASH && screen !== Screen.LOCK && (
+        <div className="px-6 pt-4">
+          <GoogleNativeAppAd />
+        </div>
+      )}
+      <AnimatePresence mode="wait">
+        {renderScreen()}
+      </AnimatePresence>
 
       <AnimatePresence>
         {showTempWarning && (
@@ -1761,8 +1870,8 @@ export default function App() {
       {/* Navigation Bar (Mobile Style) */}
       {screen !== Screen.SPLASH && screen !== Screen.LOCK && (
         <div className={cn(
-          "fixed left-1/2 -translate-x-1/2 w-full max-w-[480px] h-20 neo-blur border-t border-white/5 flex items-center justify-around px-4 pb-4 z-50 transition-all duration-300",
-          "bottom-0"
+          "fixed left-1/2 -translate-x-1/2 w-full max-w-[480px] h-20 neo-blur border-b border-white/5 flex items-center justify-around px-4 z-50 transition-all duration-300",
+          "top-0"
         )}>
           <NavButton active={screen === Screen.HOME} icon={Battery} onClick={() => setScreen(Screen.HOME)} />
           <NavButton active={screen === Screen.FEATURES || screen === Screen.SPEED_TEST || screen === Screen.PREDICTOR || screen === Screen.CLEANER || screen === Screen.VOICE_ALERTS || screen === Screen.DIAGNOSTICS || screen === Screen.NOTIFICATION_PREVIEW} icon={Gamepad} onClick={() => setScreen(Screen.FEATURES)} />
@@ -2038,21 +2147,31 @@ function SplashScreen({ t }: any) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="flex flex-col items-center justify-center h-full space-y-8 bg-[#020617]"
+      className="flex flex-col items-center justify-center h-full space-y-8 bg-[#040108]"
     >
       <motion.div 
         animate={{ 
-          scale: [1, 1.2, 1],
+          scale: [1, 1.15, 1],
+          boxShadow: [
+            "0 0 30px rgba(0,255,136,0.3), 0 0 50px rgba(255,0,127,0.2)",
+            "0 0 50px rgba(0,255,136,0.5), 0 0 70px rgba(255,0,127,0.4)",
+            "0 0 30px rgba(0,255,136,0.3), 0 0 50px rgba(255,0,127,0.2)"
+          ]
         }}
-        transition={{ duration: 2, repeat: Infinity }}
-        className="w-32 h-32 bg-[#00FF88] rounded-[40px] flex items-center justify-center p-6 shadow-[0_0_50px_rgba(0,255,136,0.3)]"
+        transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+        className="w-32 h-32 bg-gradient-to-tr from-[#00FF88] to-[#FF007F] rounded-[40px] flex items-center justify-center p-6"
       >
-        <Zap size={64} className="text-black fill-current" />
+        <Zap size={64} className="text-black fill-current drop-shadow-[0_2px_5px_rgba(0,0,0,0.3)]" />
       </motion.div>
-      <div className="text-center">
-        <h1 className="text-4xl font-black tracking-tighter text-white uppercase italic">{t.appName}<span className="text-[#00FF88]">.</span></h1>
+      <div className="text-center px-4">
+        <h1 className="text-4xl font-black tracking-tighter uppercase italic bg-gradient-to-r from-[#00FF88] via-[#FF007F] to-[#00FF88] bg-[length:200%_auto] animate-[pulse_3s_infinite] bg-clip-text text-transparent">
+          {t.appName}
+        </h1>
         {/* sync_v1.0.26 */}
-        <p className="text-slate-500 text-[10px] tracking-[0.4em] font-bold mt-2 uppercase">{t.coreSystem} v1.0.31</p>
+        <p className="text-slate-400 text-[10px] tracking-[0.4em] font-black mt-3 uppercase flex items-center justify-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#00FF88] animate-ping" />
+          <span>{t.coreSystem} v1.0.32</span>
+        </p>
       </div>
     </motion.div>
   );
@@ -2079,8 +2198,24 @@ function HomeScreen({
   setHasNotificationPermission,
   nativePermissions,
   hasOtherPermissionsConfirmed,
-  setHasOtherPermissionsConfirmed
+  setHasOtherPermissionsConfirmed,
+  hasAutoStartConfirmed,
+  setHasAutoStartConfirmed,
+  theme,
+  setTheme
 }: any) {
+  const [isPermissionsExpanded, setIsPermissionsExpanded] = useState(false);
+
+  const totalPermissions = 5;
+  const grantedCount = [
+    nativePermissions?.batteryIgnored,
+    nativePermissions?.overlayAllowed,
+    hasNotificationPermission,
+    hasAutoStartConfirmed,
+    hasOtherPermissionsConfirmed
+  ].filter(Boolean).length;
+  const allGranted = grantedCount === totalPermissions;
+
   return (
     <motion.div 
       initial={{ opacity: 0 }} 
@@ -2090,210 +2225,283 @@ function HomeScreen({
     >
       <header className="flex justify-between items-center mb-8">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-accent rounded-xl flex items-center justify-center shadow-[0_0_15px_rgba(0,255,136,0.4)]">
-             <Zap size={20} className="text-black" />
+          <div className="w-10 h-10 bg-gradient-to-tr from-[#00FF88] to-[#FF007F] rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(255,0,127,0.3)]">
+             <Zap size={20} className="text-black fill-current drop-shadow-[0_1px_2px_rgba(0,0,0,0.2)]" />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">{t.appName}<span className="text-accent">.</span></h1>
+          <h1 className="text-2xl font-black tracking-tight text-white uppercase italic">
+            {t.appName}<span className="text-[#FF007F]">.</span>
+          </h1>
         </div>
         <div className="flex gap-2 items-center">
           <button 
             onClick={onShare} 
-            className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-[#00FF88] text-[10px] font-black uppercase rounded-full tracking-wider transition-all duration-200 active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-emerald-500/10 to-pink-500/10 hover:from-emerald-500/20 hover:to-pink-500/20 border border-white/10 text-[#00FF88] hover:text-[#FF007F] text-[10px] font-black uppercase rounded-full tracking-wider transition-all duration-200 active:scale-95 animate-pulse"
           >
             <Share2 size={12} />
-            <span>Share App / शेयर</span>
+            <span>Share / शेयर</span>
           </button>
-          <button onClick={() => setScreen(Screen.ALARM_SETTINGS)} className="w-10 h-10 bg-slate-900 border border-slate-800 rounded-full flex items-center justify-center shrink-0">
+          <button 
+            onClick={() => setTheme(theme === 'dark' ? 'neon' : (theme === 'neon' ? 'light' : 'dark'))} 
+            className="w-10 h-10 bg-slate-900 border border-slate-800 rounded-full flex items-center justify-center shrink-0 hover:bg-slate-800 transition-all text-[#00FF88] shadow-[0_0_15px_rgba(0,0,0,0.4)]"
+            title="Cycle Theme / थीम बदलें"
+          >
+            {theme === 'light' ? (
+              <Moon size={18} className="text-[#FF007F]" />
+            ) : theme === 'dark' ? (
+              <Palette size={18} className="text-[#00FF88]" />
+            ) : (
+              <Sun size={18} className="text-[#FF007F]" />
+            )}
+          </button>
+          <button 
+            onClick={() => triggerAdMobInterstitial(() => setScreen(Screen.ALARM_SETTINGS))} 
+            className="w-10 h-10 bg-slate-900 border border-slate-800 rounded-full flex items-center justify-center shrink-0 hover:bg-slate-800 text-white transition-all shadow-[0_0_15px_rgba(0,0,0,0.4)]"
+          >
             <Settings size={18} />
           </button>
         </div>
       </header>
 
-      {/* 🛡️ App Security Setup Card with 4 Direct Buttons directly on HomeScreen */}
+      {/* 🛡️ App Security Setup Card with Expand / Minimize Toggle or All Permissions Button */}
       <div className="w-full mb-6 bg-[#0c101d] border border-white/10 rounded-3xl p-5 flex flex-col gap-4 shadow-[0_15px_30px_rgba(0,0,0,0.4)]">
-        <div className="flex items-start gap-3 justify-between">
+        <div className="flex flex-col md:flex-row md:items-center gap-3 justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-amber-500/10 text-amber-500 rounded-xl flex items-center justify-center shrink-0">
-              <Shield size={20} className="animate-pulse" />
+            <div className={`w-9 h-9 ${allGranted ? 'bg-emerald-500/10 text-[#00FF88]' : 'bg-amber-500/10 text-amber-500'} rounded-xl flex items-center justify-center shrink-0`}>
+              <Shield size={20} className={allGranted ? '' : 'animate-pulse'} />
             </div>
             <div>
-              <h3 className="text-sm font-black text-amber-500 uppercase tracking-wide">
+              <h3 className={`text-sm font-black ${allGranted ? 'text-[#00FF88]' : 'text-amber-500'} uppercase tracking-wide`}>
                 Required Permissions Setup
               </h3>
-              <p className="text-[10px] text-slate-400">Grant the following critical permissions to ensure background protection & alarms work properly:</p>
+              <p className="text-[10px] text-slate-400">
+                {allGranted 
+                  ? "✓ All critical protection permissions granted successfully! / सभी अनुमतियां स्वीकृत हैं!" 
+                  : `Please grant permissions (${grantedCount}/${totalPermissions} set) to ensure lock/background protection`
+                }
+              </p>
             </div>
           </div>
-          <button 
-            onClick={() => setShowPermissionsModal(true)}
-            className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-extrabold text-[9px] uppercase tracking-wider rounded-lg transition-all"
-          >
-            Detailed Help 📖
-          </button>
+          
+          <div className="flex gap-2 w-full md:w-auto">
+            <button 
+              onClick={() => setShowPermissionsModal(true)}
+              className="flex-1 md:flex-none px-2.5 py-1.5 bg-[#00FF88]/10 hover:bg-[#00FF88]/20 border border-[#00FF88]/20 text-[#00FF88] font-black text-[9px] uppercase tracking-wider rounded-lg transition-all"
+            >
+              🧙 1-by-1 Wizard / जादुई सेटअप
+            </button>
+            <button 
+              onClick={() => setIsPermissionsExpanded(!isPermissionsExpanded)}
+              className="flex-1 md:flex-none px-2.5 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-extrabold text-[9px] uppercase tracking-wider rounded-lg transition-all flex items-center justify-center gap-1"
+            >
+              {isPermissionsExpanded ? "Minimize 🗗" : "All Permissions / सभी 🔑"}
+            </button>
+          </div>
         </div>
 
-        {/* 5 Bento Columns representing the key setup actions directly accessible */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          {/* 1. BATTERY IMMUNITY */}
-          <div className="p-3 bg-slate-900/60 border border-white/5 rounded-2xl flex flex-col justify-between gap-3">
-            <div className="flex justify-between items-start gap-1">
-              <div>
-                <p className="text-[9px] font-black uppercase text-slate-500">Step 1: Battery</p>
-                <h4 className="text-[11px] font-extrabold text-white">Battery Optimization</h4>
-              </div>
-              {nativePermissions.batteryIgnored ? (
-                <span className="text-[8px] bg-emerald-500/15 border border-emerald-500/30 text-[#00FF88] px-2 py-0.5 rounded-md font-extrabold">GRANTED (OK)</span>
-              ) : (
-                <span className="text-[8px] bg-red-400/10 border border-red-500/30 text-red-400 px-2 py-0.5 rounded-md font-extrabold">REQUIRED</span>
-              )}
+        {/* Dynamic Expandable Content */}
+        {isPermissionsExpanded ? (
+          <div className="space-y-3">
+            <div className="flex justify-between items-center mb-1">
+              <span className="text-[9px] text-[#00FF88] uppercase tracking-widest font-mono font-black block">
+                🛡️ DIRECT PERMISSIONS CONTROL PANEL
+              </span>
+              <button 
+                onClick={() => setIsPermissionsExpanded(false)}
+                className="text-[9px] text-slate-400 hover:text-white underline cursor-pointer"
+              >
+                Hide / छोटा करें ▲
+              </button>
             </div>
-            <button
-              onClick={async () => {
-                if (Capacitor.isNativePlatform()) {
-                  try {
-                    await AlarmService.requestBatteryOptimization();
-                  } catch (e) {
-                    console.error(e);
-                  }
-                } else {
-                  alert("This option is only available on Mobile APK.");
-                }
-              }}
-              className={`w-full py-2 ${nativePermissions.batteryIgnored ? 'bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10' : 'bg-blue-500 hover:bg-blue-600 text-black shadow-[0_3px_12px_rgba(59,130,246,0.2)]'} font-black text-[10px] uppercase rounded-xl transition-all flex items-center justify-center gap-1`}
-            >
-              🔋 {nativePermissions.batteryIgnored ? 'Battery Allowed' : 'Allow Battery'}
-            </button>
-          </div>
-
-          {/* 2. OVERLAY */}
-          <div className="p-3 bg-slate-900/60 border border-white/5 rounded-2xl flex flex-col justify-between gap-3">
-            <div className="flex justify-between items-start gap-1">
-              <div>
-                <p className="text-[9px] font-black uppercase text-slate-500">Step 6: Overlay</p>
-                <h4 className="text-[11px] font-extrabold text-white">Display Over Apps</h4>
-              </div>
-              {nativePermissions.overlayAllowed ? (
-                <span className="text-[8px] bg-emerald-500/15 border border-emerald-500/30 text-[#00FF88] px-2 py-0.5 rounded-md font-extrabold">GRANTED (OK)</span>
-              ) : (
-                <span className="text-[8px] bg-red-400/10 border border-red-500/30 text-red-400 px-2 py-0.5 rounded-md font-extrabold">REQUIRED</span>
-              )}
-            </div>
-            <button
-              onClick={async () => {
-                if (Capacitor.isNativePlatform()) {
-                  try {
-                    await AlarmService.openOverlaySettings();
-                  } catch (e) {
-                    console.error(e);
-                  }
-                } else {
-                  alert("This option is only available on Mobile APK.");
-                }
-              }}
-              className={`w-full py-2 ${nativePermissions.overlayAllowed ? 'bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10' : 'bg-amber-500 hover:bg-amber-600 text-black shadow-[0_3px_12px_rgba(245,158,11,0.2)]'} font-black text-[10px] uppercase rounded-xl transition-all flex items-center justify-center gap-1`}
-            >
-              📺 {nativePermissions.overlayAllowed ? 'Overlay Allowed' : 'Allow Overlay'}
-            </button>
-          </div>
-
-          {/* 3. NOTIFICATION */}
-          <div className="p-3 bg-slate-900/60 border border-white/5 rounded-2xl flex flex-col justify-between gap-3">
-            <div className="flex justify-between items-start gap-1">
-              <div>
-                <p className="text-[9px] font-black uppercase text-slate-500">Step 3: Notification</p>
-                <h4 className="text-[11px] font-extrabold text-white">Push Notifications</h4>
-              </div>
-              {hasNotificationPermission ? (
-                <span className="text-[8px] bg-emerald-500/15 border border-emerald-500/30 text-[#00FF88] px-2 py-0.5 rounded-md font-extrabold">GRANTED (OK)</span>
-              ) : (
-                <span className="text-[8px] bg-red-400/10 border border-red-500/30 text-red-400 px-2 py-0.5 rounded-md font-extrabold">REQUIRED</span>
-              )}
-            </div>
-            <button
-              onClick={async () => {
-                if (Capacitor.isNativePlatform()) {
-                  try {
-                    await AlarmService.openNotificationSettings();
-                  } catch (e) {
-                    console.error("Failed to open native notification settings:", e);
-                  }
-                } else if ('Notification' in window) {
-                  try {
-                    const perm = await Notification.requestPermission();
-                    if (perm === 'granted') {
-                      setHasNotificationPermission(true);
+            
+            {/* 5 Bento Columns representing the key setup actions directly accessible */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+              {/* 1. BATTERY IMMUNITY */}
+              <div className="p-3 bg-slate-900/60 border border-white/5 rounded-2xl flex flex-col justify-between gap-3">
+                <div className="flex justify-between items-start gap-1">
+                  <div>
+                    <p className="text-[9px] font-black uppercase text-slate-500">Step 1: Battery</p>
+                    <h4 className="text-[11px] font-extrabold text-white">Battery Optimization</h4>
+                  </div>
+                  {nativePermissions.batteryIgnored ? (
+                    <span className="text-[8px] bg-emerald-500/15 border border-emerald-500/30 text-[#00FF88] px-2 py-0.5 rounded-md font-extrabold">GRANTED (OK)</span>
+                  ) : (
+                    <span className="text-[8px] bg-red-400/10 border border-red-500/30 text-red-400 px-2 py-0.5 rounded-md font-extrabold">REQUIRED</span>
+                  )}
+                </div>
+                <button
+                  onClick={async () => {
+                    if (Capacitor.isNativePlatform()) {
+                      try {
+                        await AlarmService.requestBatteryOptimization();
+                      } catch (e) {
+                        console.error(e);
+                      }
+                    } else {
+                      alert("This option is only available on Mobile APK.");
                     }
-                  } catch (e) {
-                    console.error(e);
-                  }
-                }
-              }}
-              className={`w-full py-2 ${hasNotificationPermission ? 'bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10' : 'bg-emerald-500 hover:bg-emerald-600 text-black shadow-[0_3px_12px_rgba(16,185,129,0.2)]'} font-black text-[10px] uppercase rounded-xl transition-all flex items-center justify-center gap-1`}
-            >
-              🔔 {hasNotificationPermission ? 'Notifications OK' : 'Allow Notifications'}
-            </button>
-          </div>
-
-          {/* 4. AUTO START */}
-          <div className="p-3 bg-slate-900/60 border border-white/5 rounded-2xl flex flex-col justify-between gap-3">
-            <div className="flex justify-between items-start gap-1">
-              <div>
-                <p className="text-[9px] font-black uppercase text-slate-500">Step 4: Background</p>
-                <h4 className="text-[11px] font-extrabold text-white">Auto-Start Setting</h4>
+                  }}
+                  className={`w-full py-2 ${nativePermissions.batteryIgnored ? 'bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10' : 'bg-blue-500 hover:bg-blue-600 text-black shadow-[0_3px_12px_rgba(59,130,246,0.2)]'} font-black text-[10px] uppercase rounded-xl transition-all flex items-center justify-center gap-1`}
+                >
+                  🔋 {nativePermissions.batteryIgnored ? 'Battery Allowed' : 'Allow Battery'}
+                </button>
               </div>
-              <span className="text-[8px] bg-purple-500/10 border border-purple-500/30 text-purple-400 px-2 py-0.5 rounded-md font-extrabold">RECOMMENDED</span>
-            </div>
-            <button
-              onClick={async () => {
-                if (Capacitor.isNativePlatform()) {
-                  try {
-                    await AlarmService.openAutoStartSettings();
-                  } catch (e) {
-                    console.error(e);
-                  }
-                } else {
-                  alert("This option is only available on Mobile APK.");
-                }
-              }}
-              className="w-full py-2 bg-purple-505 hover:bg-purple-600 text-black shadow-[0_3px_12px_rgba(168,85,247,0.2)] font-black text-[10px] uppercase rounded-xl transition-all flex items-center justify-center gap-2"
-              style={{ backgroundColor: '#a855f7' }}
-            >
-              🔄 Launch Auto-Start
-            </button>
-          </div>
 
-          {/* 5. OTHER PERMISSIONS */}
-          <div className="p-3 bg-slate-900/60 border border-white/5 rounded-2xl flex flex-col justify-between gap-3 font-sans">
-            <div className="flex justify-between items-start gap-1">
-              <div>
-                <p className="text-[9px] font-black uppercase text-[#00FF88]">Step 5: Brand Settings</p>
-                <h4 className="text-[11px] font-extrabold text-white">Other Permissions</h4>
+              {/* 2. OVERLAY */}
+              <div className="p-3 bg-slate-900/60 border border-white/5 rounded-2xl flex flex-col justify-between gap-3">
+                <div className="flex justify-between items-start gap-1">
+                  <div>
+                    <p className="text-[9px] font-black uppercase text-slate-500">Step 2: Overlay</p>
+                    <h4 className="text-[11px] font-extrabold text-white">Display Over Apps</h4>
+                  </div>
+                  {nativePermissions.overlayAllowed ? (
+                    <span className="text-[8px] bg-emerald-500/15 border border-emerald-500/30 text-[#00FF88] px-2 py-0.5 rounded-md font-extrabold">GRANTED (OK)</span>
+                  ) : (
+                    <span className="text-[8px] bg-red-400/10 border border-red-500/30 text-red-400 px-2 py-0.5 rounded-md font-extrabold">REQUIRED</span>
+                  )}
+                </div>
+                <button
+                  onClick={async () => {
+                    if (Capacitor.isNativePlatform()) {
+                      try {
+                        await AlarmService.openOverlaySettings();
+                      } catch (e) {
+                        console.error(e);
+                      }
+                    } else {
+                      alert("This option is only available on Mobile APK.");
+                    }
+                  }}
+                  className={`w-full py-2 ${nativePermissions.overlayAllowed ? 'bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10' : 'bg-amber-500 hover:bg-amber-600 text-black shadow-[0_3px_12px_rgba(245,158,11,0.2)]'} font-black text-[10px] uppercase rounded-xl transition-all flex items-center justify-center gap-1`}
+                >
+                  📺 {nativePermissions.overlayAllowed ? 'Overlay Allowed' : 'Allow Overlay'}
+                </button>
               </div>
-              {hasOtherPermissionsConfirmed ? (
-                <span className="text-[8px] bg-emerald-500/15 border border-emerald-500/30 text-[#00FF88] px-2 py-0.5 rounded-md font-extrabold">GRANTED (OK)</span>
-              ) : (
-                <span className="text-[8px] bg-[#00FF88]/10 border border-[#00FF88]/30 text-[#00FF88] px-2 py-0.5 rounded-md font-extrabold">RECOMMENDED</span>
-              )}
+
+              {/* 3. NOTIFICATION */}
+              <div className="p-3 bg-slate-900/60 border border-white/5 rounded-2xl flex flex-col justify-between gap-3">
+                <div className="flex justify-between items-start gap-1">
+                  <div>
+                    <p className="text-[9px] font-black uppercase text-slate-500">Step 3: Notification</p>
+                    <h4 className="text-[11px] font-extrabold text-white">Push Notifications</h4>
+                  </div>
+                  {hasNotificationPermission ? (
+                    <span className="text-[8px] bg-emerald-500/15 border border-emerald-500/30 text-[#00FF88] px-2 py-0.5 rounded-md font-extrabold">GRANTED (OK)</span>
+                  ) : (
+                    <span className="text-[8px] bg-red-400/10 border border-red-500/30 text-red-400 px-2 py-0.5 rounded-md font-extrabold">REQUIRED</span>
+                  )}
+                </div>
+                <button
+                  onClick={async () => {
+                    if (Capacitor.isNativePlatform()) {
+                      try {
+                        await AlarmService.openNotificationSettings();
+                      } catch (e) {
+                        console.error("Failed to open native notification settings:", e);
+                      }
+                    } else if ('Notification' in window) {
+                      try {
+                        const perm = await Notification.requestPermission();
+                        if (perm === 'granted') {
+                          alert("Notification Granted (OK)!");
+                        }
+                      } catch (e) {
+                        console.error(e);
+                      }
+                    }
+                  }}
+                  className={`w-full py-2 ${hasNotificationPermission ? 'bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10' : 'bg-emerald-500 hover:bg-emerald-600 text-black shadow-[0_3px_12px_rgba(16,185,129,0.2)]'} font-black text-[10px] uppercase rounded-xl transition-all flex items-center justify-center gap-1`}
+                >
+                  🔔 {hasNotificationPermission ? 'Notifications OK' : 'Allow Notifications'}
+                </button>
+              </div>
+
+              {/* 4. AUTO START */}
+              <div className="p-3 bg-slate-900/60 border border-white/5 rounded-2xl flex flex-col justify-between gap-3">
+                <div className="flex justify-between items-start gap-1">
+                  <div>
+                    <p className="text-[9px] font-black uppercase text-slate-500">Step 4: Background</p>
+                    <h4 className="text-[11px] font-extrabold text-white">Auto-Start Setting</h4>
+                  </div>
+                  {hasAutoStartConfirmed ? (
+                    <span className="text-[8px] bg-emerald-500/15 border border-emerald-500/30 text-[#00FF88] px-2 py-0.5 rounded-md font-extrabold">GRANTED (OK)</span>
+                  ) : (
+                    <span className="text-[8px] bg-purple-500/10 border border-purple-500/30 text-purple-400 px-2 py-0.5 rounded-md font-extrabold">RECOMMENDED</span>
+                  )}
+                </div>
+                <button
+                  onClick={async () => {
+                    if (Capacitor.isNativePlatform()) {
+                      try {
+                        await AlarmService.openAutoStartSettings();
+                      } catch (e) {
+                        console.error(e);
+                      }
+                    } else {
+                      alert("This option is only available on Mobile APK.");
+                    }
+                    setHasAutoStartConfirmed(true);
+                    localStorage.setItem('hasAutoStartConfirmed', 'true');
+                  }}
+                  className={`w-full py-2 ${hasAutoStartConfirmed ? 'bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10' : 'bg-purple-500 text-black shadow-[0_3px_12px_rgba(168,85,247,0.2)]'} font-black text-[10px] uppercase rounded-xl transition-all flex items-center justify-center gap-2`}
+                  style={hasAutoStartConfirmed ? {} : { backgroundColor: '#a855f7' }}
+                >
+                  🔄 {hasAutoStartConfirmed ? 'AutoStart Allowed' : 'Allow Auto-Start'}
+                </button>
+              </div>
+
+              {/* 5. OTHER PERMISSIONS */}
+              <div className="p-3 bg-slate-900/60 border border-white/5 rounded-2xl flex flex-col justify-between gap-3 font-sans">
+                <div className="flex justify-between items-start gap-1">
+                  <div>
+                    <p className="text-[9px] font-black uppercase text-[#00FF88]">Step 5: Brand Settings</p>
+                    <h4 className="text-[11px] font-extrabold text-white">Other Permissions</h4>
+                  </div>
+                  {hasOtherPermissionsConfirmed ? (
+                    <span className="text-[8px] bg-emerald-500/15 border border-emerald-500/30 text-[#00FF88] px-2 py-0.5 rounded-md font-extrabold">GRANTED (OK)</span>
+                  ) : (
+                    <span className="text-[8px] bg-[#00FF88]/10 border border-[#00FF88]/30 text-[#00FF88] px-2 py-0.5 rounded-md font-extrabold">RECOMMENDED</span>
+                  )}
+                </div>
+                <button
+                  onClick={async () => {
+                    if (Capacitor.isNativePlatform()) {
+                      try {
+                        await AlarmService.openOtherPermissionsSettings();
+                      } catch (e) {
+                         console.error(e);
+                      }
+                    } else {
+                      alert("This option is only available on Mobile APK.");
+                    }
+                    setHasOtherPermissionsConfirmed(true);
+                    localStorage.setItem('hasOtherPermissionsConfirmed', 'true');
+                  }}
+                  className={`w-full py-2 ${hasOtherPermissionsConfirmed ? 'bg-white/5 border border-white/10 text-slate-400 hover:bg-white/10' : 'bg-emerald-500/10 border border-[#00FF88]/30 hover:bg-emerald-500/25 text-[#00FF88] font-black text-[9px] uppercase rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-[0_3px_12px_rgba(0,255,136,0.1)] active:scale-95'}`}
+                >
+                  ⚙️ {hasOtherPermissionsConfirmed ? 'Other Perms Allowed' : 'Allow Other Perms'}
+                </button>
+              </div>
             </div>
-            <button
-              onClick={async () => {
-                if (Capacitor.isNativePlatform()) {
-                  try {
-                    await AlarmService.openOtherPermissionsSettings();
-                  } catch (e) {
-                     console.error(e);
-                  }
-                } else {
-                  alert("This option is only available on Mobile APK.");
-                }
-                setHasOtherPermissionsConfirmed(true);
-                localStorage.setItem('hasOtherPermissionsConfirmed', 'true');
-              }}
-              className="w-full py-2 bg-emerald-500/10 border border-[#00FF88]/30 hover:bg-emerald-500/25 text-[#00FF88] font-black text-[9px] uppercase rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-[0_3px_12px_rgba(0,255,136,0.1)] active:scale-95"
+          </div>
+        ) : (
+          <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-slate-950/50 p-3.5 border border-white/5 rounded-2xl">
+            <div className="text-left">
+              <p className="text-xs font-bold text-white flex items-center gap-1">
+                🔑 All Permissions / सभी स्वीकृतियां 
+                <span className="text-[10px] bg-amber-500/10 border border-amber-500/30 text-amber-500 px-2 py-0.5 rounded-md font-extrabold leading-none font-mono">
+                  {grantedCount}/5 ACTIVES
+                </span>
+              </p>
+              <p className="text-[10px] text-slate-400 mt-0.5 leading-snug">बैकग्राउंड सुरक्षा, अलार्म व स्क्रीन लॉक पर सुरक्षा कवच निरंतर चालू रखने की स्वीकृतियां यहाँ जांचें।</p>
+            </div>
+            <button 
+              onClick={() => setIsPermissionsExpanded(true)}
+              className="w-full sm:w-auto px-4 py-2.5 bg-slate-900 border border-white/15 text-[#00FF88] hover:bg-slate-800 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-1 shrink-0 active:scale-95"
             >
-              ⚙️ Launch Other Perms
+              🔑 Manage Permissions / स्वीकृतियां प्रबन्ध ➔
             </button>
           </div>
-        </div>
+        )}
       </div>
  
       <div className="flex-1 grid grid-cols-12 gap-4">
@@ -2338,11 +2546,11 @@ function HomeScreen({
         </div>
  
         {/* Alarm Threshold - Adjustable Intelligent Battery Guard Settings */}
-        <div className="col-span-12 bento-card p-6 flex flex-col gap-4 relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 via-transparent to-emerald-500/5 pointer-events-none" />
+        <div className="col-span-12 bento-card p-6 flex flex-col gap-4 relative overflow-hidden border border-white/5 shadow-[0_4px_30px_rgba(0,0,0,0.3)]">
+          <div className="absolute inset-0 bg-gradient-to-br from-[#FF007F]/5 via-transparent to-[#00FF88]/5 pointer-events-none" />
           <div className="flex items-center gap-2.5 relative z-10">
-            <div className="p-2 bg-[#00FF88]/15 text-[#00FF88] rounded-xl">
-              <ShieldCheck size={18} />
+            <div className="p-2 bg-gradient-to-tr from-[#00FF88]/15 to-[#FF007F]/15 text-[#00FF88] rounded-xl border border-white/5">
+              <ShieldCheck size={18} className="text-[#00FF88]" />
             </div>
             <h3 className="text-xs font-extrabold uppercase tracking-widest text-[#00FF88] font-sans">
               Intelligent Battery Guard Settings
@@ -2350,18 +2558,18 @@ function HomeScreen({
           </div>
 
           <p className="text-xs font-semibold leading-relaxed text-slate-300 relative z-10 font-sans">
-            Adjust the slider below to set your custom battery alarm levels. Default settings are 20% and 98%.
+            Adjust the sliders below to set custom battery alarms. Styled with elegant Neon Pink (Low level) and Neon Green (High level).
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10 mt-1">
             {/* Minimum Charge Section (Low Alarm Slider) */}
-            <div className="p-4 bg-slate-950/80 border border-white/5 rounded-[1.25rem] flex flex-col gap-3">
+            <div className="p-4 bg-slate-950/80 border border-white/5 rounded-[1.25rem] flex flex-col gap-3 transition-colors hover:border-[#FF007F]/20">
               <div className="flex justify-between items-center">
                 <div className="flex flex-col text-left">
                   <span className="text-[10px] uppercase tracking-wider text-slate-400 font-extrabold font-sans">Minimum Charge / न्यूनतम स्तर</span>
-                  <span className="text-[9px] text-rose-500/80 font-bold font-sans">Low Alarm / कम बैटरी पर अलार्म</span>
+                  <span className="text-[9px] text-[#FF007F] font-bold font-sans">Low Alarm / कम बैटरी पर अलार्म</span>
                 </div>
-                <span className="text-2xl font-black text-rose-500 font-mono">{config.lowBatteryPercentage}%</span>
+                <span className="text-2xl font-black text-[#FF007F] font-mono">{config.lowBatteryPercentage}%</span>
               </div>
               <div className="flex items-center gap-3">
                 <span className="text-[10px] text-slate-500 font-mono">10%</span>
@@ -2370,10 +2578,10 @@ function HomeScreen({
                   min="10"
                   max="45"
                   value={config.lowBatteryPercentage}
-                  onChange={(e) => setConfig({ ...config, lowBatteryPercentage: parseInt(e.target.value, 10) })}
-                  className="flex-1 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-rose-500"
+                  onChange={(e) => setConfig({ ...config, lowBatteryPercentage: parseInt(e.target.value, 10), hasCustomizedLowBatteryPercentage: true })}
+                  className="flex-1 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-[#FF007F]"
                   style={{
-                    background: `linear-gradient(to right, #f43f5e 0%, #f43f5e ${(config.lowBatteryPercentage - 10) / (45 - 10) * 100}%, #1e293b ${(config.lowBatteryPercentage - 10) / (45 - 10) * 100}%, #1e293b 100%)`
+                    background: `linear-gradient(to right, #FF007F 0%, #FF007F ${(config.lowBatteryPercentage - 10) / (45 - 10) * 100}%, #1e293b ${(config.lowBatteryPercentage - 10) / (45 - 10) * 100}%, #1e293b 100%)`
                   }}
                 />
                 <span className="text-[10px] text-slate-500 font-mono">45%</span>
@@ -2381,11 +2589,11 @@ function HomeScreen({
             </div>
 
             {/* Maximum Charge Section (Full Alarm Slider) */}
-            <div className="p-4 bg-slate-950/80 border border-white/5 rounded-[1.25rem] flex flex-col gap-3">
+            <div className="p-4 bg-slate-950/80 border border-white/5 rounded-[1.25rem] flex flex-col gap-3 transition-colors hover:border-[#00FF88]/20">
               <div className="flex justify-between items-center">
                 <div className="flex flex-col text-left">
                   <span className="text-[10px] uppercase tracking-wider text-slate-400 font-extrabold font-sans">Maximum Charge / अधिकतम स्तर</span>
-                  <span className="text-[9px] text-[#00FF88]/80 font-bold font-sans">Full Alarm / फुल चार्ज पर अलार्म</span>
+                  <span className="text-[9px] text-[#00FF88] font-bold font-sans">Full Alarm / फुल चार्ज पर अलार्म</span>
                 </div>
                 <span className="text-2xl font-black text-[#00FF88] font-mono">{config.targetPercentage}%</span>
               </div>
@@ -2396,7 +2604,7 @@ function HomeScreen({
                   min="50"
                   max="100"
                   value={config.targetPercentage}
-                  onChange={(e) => setConfig({ ...config, targetPercentage: parseInt(e.target.value, 10) })}
+                  onChange={(e) => setConfig({ ...config, targetPercentage: parseInt(e.target.value, 10), hasCustomizedTargetPercentage: true })}
                   className="flex-1 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-[#00FF88]"
                   style={{
                     background: `linear-gradient(to right, #00FF88 0%, #00FF88 ${(config.targetPercentage - 50) / (100 - 50) * 100}%, #1e293b ${(config.targetPercentage - 50) / (100 - 50) * 100}%, #1e293b 100%)`
@@ -2408,14 +2616,9 @@ function HomeScreen({
           </div>
         </div>
  
-        {/* AdMob (Moved from Top) */}
-        <div className="col-span-12 mt-2">
-          <GoogleAdMob slot={getAdUnitId('banner')} />
-        </div>
- 
         {/* Master Toggle */}
         <div className="col-span-12 flex flex-col gap-4 mt-2">
-          <div className="bg-[#00FF88] rounded-[2rem] p-1 flex shadow-[0_20px_50px_rgba(0,255,136,0.2)]">
+          <div className="bg-gradient-to-r from-[#00FF88] to-[#FF007F] rounded-[2rem] p-[3px] flex shadow-[0_15px_40px_rgba(255,0,127,0.25)] hover:shadow-[0_20px_50px_rgba(0,255,136,0.3)] transition-all duration-300">
             <button 
               onClick={() => {
                 setAudioUnlocked(true);
@@ -2425,37 +2628,37 @@ function HomeScreen({
 
                 setMonitoring(!isMonitoring);
               }}
-              className="flex-1 min-h-[80px] bg-black text-white rounded-[1.8rem] flex items-center justify-center gap-4 relative overflow-hidden group transition-all active:scale-95"
+              className="flex-1 min-h-[82px] bg-black text-white rounded-[1.8rem] flex items-center justify-center gap-4 relative overflow-hidden group transition-all active:scale-[0.98]"
             >
               {isMonitoring ? (
                 <>
                   <motion.div 
-                    animate={{ opacity: [0.05, 0.15, 0.05] }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                    className="absolute inset-0 bg-[#00FF88]"
+                    animate={{ opacity: [0.08, 0.22, 0.08] }}
+                    transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                    className="absolute inset-0 bg-gradient-to-r from-[#00FF88] to-[#FF007F]"
                   />
-                  <div className="w-10 h-10 rounded-full border-2 border-[#00FF88] flex items-center justify-center bg-[#00FF88] relative z-10 shadow-[0_0_20px_rgba(0,255,136,0.5)]">
-                    <ShieldCheck size={24} className="text-black" />
+                  <div className="w-11 h-11 rounded-full border border-white/20 flex items-center justify-center bg-gradient-to-r from-[#00FF88] to-[#FF007F] relative z-10 shadow-[0_0_20px_rgba(255,0,127,0.5)]">
+                    <ShieldCheck size={24} className="text-black stroke-[2.5]" />
                   </div>
                   <div className="flex flex-col items-start relative z-10">
-                    <span className="text-xl font-black tracking-tight uppercase italic text-[#00FF88] leading-none">
+                    <span className="text-xl font-black tracking-tight uppercase italic bg-gradient-to-r from-white via-slate-105 to-[#00FF88] bg-clip-text text-transparent leading-none">
                       {t.armed}
                     </span>
-                    <span className="text-[10px] font-bold uppercase tracking-tight text-[#00FF88]/60">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-[#00FF88] drop-shadow-[0_2px_5px_rgba(0,0,0,0.5)] mt-1">
                       {t.securedMonitoring}
                     </span>
                   </div>
                 </>
               ) : (
                 <>
-                  <div className="w-10 h-10 rounded-full border-2 border-white/20 flex items-center justify-center bg-white/5 relative z-10 group-hover:border-[#00FF88] transition-colors">
-                    <Power size={24} className="text-white group-hover:text-[#00FF88] transition-colors" />
+                  <div className="w-11 h-11 rounded-full border border-white/20 flex items-center justify-center bg-white/5 relative z-10 group-hover:border-[#00FF88] group-hover:bg-gradient-to-tr group-hover:from-[#00FF88] group-hover:to-[#FF007F] transition-all duration-350">
+                    <Power size={24} className="text-white group-hover:text-black transition-colors" />
                   </div>
                   <div className="flex flex-col items-start relative z-10 text-left">
                     <span className="text-xl font-black tracking-tight uppercase italic text-white leading-none group-hover:text-[#00FF88] transition-colors">
                       {t.setAlarm}
                     </span>
-                    <span className="text-[10px] font-bold uppercase tracking-tight text-white/40 group-hover:text-[#00FF88]/40">
+                    <span className="text-[10px] font-bold uppercase tracking-tight text-white/40 group-hover:text-[#FF007F]/80 transition-colors mt-0.5">
                       {t.backgroundDefense}
                     </span>
                   </div>
@@ -2463,6 +2666,11 @@ function HomeScreen({
               )}
             </button>
           </div>
+        </div>
+
+        {/* AdMob (Moved to Bottom) */}
+        <div className="col-span-12 mt-4">
+          <GoogleAdMob slot={getAdUnitId('banner')} position="BOTTOM_CENTER" />
         </div>
       </div>
 
@@ -2488,7 +2696,7 @@ function StatusCard({ icon: Icon, label, value, color }: any) {
   );
 }
 
-function AlarmSettings({ config, setConfig, onBack, t }: any) {
+function AlarmSettings({ config, setConfig, onBack, t, theme, setTheme }: any) {
   const [showPicker, setShowPicker] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isCapacityDialogOpen, setIsCapacityDialogOpen] = useState(false);
@@ -2776,11 +2984,11 @@ function AlarmSettings({ config, setConfig, onBack, t }: any) {
         <div className="bento-card space-y-4">
           <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-slate-500">
             <span>{t.volumeLevel}</span>
-            <span className="text-accent">{config.volume}%</span>
+            <span className="text-[#00FF88] drop-shadow-[0_0_8px_rgba(0,255,136,0.3)]">{config.volume}%</span>
           </div>
           <input 
             type="range" 
-            className="w-full h-2 accent-accent bg-slate-800 rounded-full appearance-none cursor-pointer" 
+            className="w-full h-2 accent-[#00FF88] bg-slate-800 rounded-full appearance-none cursor-pointer" 
             value={config.volume} 
             onChange={e => setConfig({...config, volume: parseInt(e.target.value)})} 
           />
@@ -2788,33 +2996,33 @@ function AlarmSettings({ config, setConfig, onBack, t }: any) {
         <div className="bento-card space-y-4">
           <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-slate-500">
             <span>{t.lowBatteryAlert}</span>
-            <span className="text-accent">{config.lowBatteryPercentage}%</span>
+            <span className="text-[#FF007F] drop-shadow-[0_0_8px_rgba(255,0,127,0.3)]">{config.lowBatteryPercentage}%</span>
           </div>
           <input 
             type="range" 
             min="10"
             max="45"
-            className="w-full h-2 accent-accent bg-slate-800 rounded-full appearance-none cursor-pointer" 
+            className="w-full h-2 accent-[#FF007F] bg-slate-800 rounded-full appearance-none cursor-pointer" 
             value={config.lowBatteryPercentage} 
-            onChange={e => setConfig({...config, lowBatteryPercentage: parseInt(e.target.value)})} 
+            onChange={e => setConfig({...config, lowBatteryPercentage: parseInt(e.target.value), hasCustomizedLowBatteryPercentage: true})} 
           />
-          <p className="text-[9px] text-slate-600 italic">Adjust کم / न्यूनतम बैटरी अलार्म सीमा (10% - 45%)</p>
+          <p className="text-[9px] text-[#FF007F]/80 font-bold italic">Adjust کم / न्यूनतम बैटरी अलार्म सीमा (10% - 45%)</p>
         </div>
 
         <div className="bento-card space-y-4">
           <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-slate-500">
             <span>High Battery Alert / फुल चार्ज अलार्म</span>
-            <span className="text-accent">{config.targetPercentage}%</span>
+            <span className="text-[#00FF88] drop-shadow-[0_0_8px_rgba(0,255,136,0.3)]">{config.targetPercentage}%</span>
           </div>
           <input 
             type="range" 
             min="50"
             max="100"
-            className="w-full h-2 accent-accent bg-slate-800 rounded-full appearance-none cursor-pointer" 
+            className="w-full h-2 accent-[#00FF88] bg-slate-800 rounded-full appearance-none cursor-pointer" 
             value={config.targetPercentage} 
-            onChange={e => setConfig({...config, targetPercentage: parseInt(e.target.value)})} 
+            onChange={e => setConfig({...config, targetPercentage: parseInt(e.target.value), hasCustomizedTargetPercentage: true})} 
           />
-          <p className="text-[9px] text-slate-600 italic">Adjust full / target maximum charge warning level (50% - 100%)</p>
+          <p className="text-[9px] text-[#00FF88]/80 font-bold italic">Adjust full / target maximum charge warning level (50% - 100%)</p>
         </div>
 
         <div className="bento-card space-y-4">
@@ -2862,6 +3070,54 @@ function AlarmSettings({ config, setConfig, onBack, t }: any) {
         <SettingsRow icon={Repeat} label={t.continuousLoop} enabled={config.repeat} onToggle={() => setConfig({...config, repeat: !config.repeat})} />
         <SettingsRow icon={Mic} label={t.voiceAlerts} enabled={config.voiceAlert} onToggle={() => setConfig({...config, voiceAlert: !config.voiceAlert})} />
         <SettingsRow icon={Activity} label="Vibrate with Alarm / अलार्म के साथ कंपन (वाइब्रेशन)" enabled={config.vibrate} onToggle={() => setConfig({...config, vibrate: !config.vibrate})} />
+
+        {/* Theme Settings Selector Block */}
+        <div className="bento-card space-y-4">
+          <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-slate-500">
+            <span>App Theme / ऐप थीम</span>
+            <span className="text-accent uppercase tracking-wider">{theme}</span>
+          </div>
+          <div className="grid grid-cols-3 gap-2.5 pt-1">
+            <button
+              onClick={() => setTheme('light')}
+              className={cn(
+                "py-3 px-1 rounded-2xl border text-[10px] font-black uppercase tracking-widest flex flex-col items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer",
+                theme === 'light' 
+                  ? "bg-white text-black border-slate-300 shadow-md font-extrabold" 
+                  : "bg-slate-900/60 text-slate-400 border-white/5 hover:bg-slate-900"
+              )}
+            >
+              <Sun size={16} className={theme === 'light' ? "text-amber-500" : ""} />
+              <span>Day (लाइट)</span>
+            </button>
+
+            <button
+              onClick={() => setTheme('dark')}
+              className={cn(
+                "py-3 px-1 rounded-2xl border text-[10px] font-black uppercase tracking-widest flex flex-col items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer",
+                theme === 'dark' 
+                  ? "bg-slate-800 text-[#00FF88] border-[#00FF88]/30 shadow-md font-extrabold" 
+                  : "bg-slate-900/60 text-slate-400 border-white/5 hover:bg-slate-900"
+              )}
+            >
+              <Moon size={16} className={theme === 'dark' ? "text-[#00FF88]" : ""} />
+              <span>Night (डार्क)</span>
+            </button>
+
+            <button
+              onClick={() => setTheme('neon')}
+              className={cn(
+                "py-3 px-1 rounded-2xl border text-[10px] font-black uppercase tracking-widest flex flex-col items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer",
+                theme === 'neon' 
+                  ? "bg-slate-950 text-[#00FF88] border-[#FF007F]/45 shadow-[0_0_15px_rgba(255,0,127,0.35)] font-extrabold" 
+                  : "bg-slate-900/40 text-slate-400 border-white/5 hover:bg-slate-900"
+              )}
+            >
+              <Palette size={16} className={theme === 'neon' ? "text-[#FF007F] animate-[pulse_2s_infinite]" : ""} />
+              <span>Neon (नियन)</span>
+            </button>
+          </div>
+        </div>
         
 
         
@@ -2883,7 +3139,7 @@ function AlarmSettings({ config, setConfig, onBack, t }: any) {
         </div>
       </div>
 
-      <GoogleAdMob slot={getAdUnitId('banner')} />
+      <GoogleAdMob slot={getAdUnitId('banner')} position="BOTTOM_CENTER" />
 
       {/* Custom Battery Capacity Input Dialog Modal */}
       <AnimatePresence>
@@ -2972,6 +3228,11 @@ function SecurityScreen({ onBack, t }: any) {
           </div>
         </div>
 
+        {/* Native Ad 1 */}
+        <div className="my-1">
+          <GoogleNativeAppAd />
+        </div>
+
         <div className="space-y-4">
           <div className="flex items-center justify-between p-4 bento-card border-accent/20">
             <div className="flex items-center gap-4">
@@ -2990,6 +3251,11 @@ function SecurityScreen({ onBack, t }: any) {
             <Lock size={16} />
             <span className="text-xs font-medium">{t.verificationBypassed}</span>
           </div>
+        </div>
+
+        {/* Native Ad 2 */}
+        <div className="my-1">
+          <GoogleNativeAppAd />
         </div>
 
         {/* Dynamic Privacy Card compliant with Google Play Policy */}
@@ -3018,7 +3284,7 @@ function SecurityScreen({ onBack, t }: any) {
           </div>
         </div>
 
-        <GoogleAdMob slot={getAdUnitId('banner')} />
+        <GoogleAdMob slot={getAdUnitId('banner')} position="BOTTOM_CENTER" />
       </div>
 
       {/* Modern sliding overlay modal for on-device privacy readability */}
@@ -3126,6 +3392,11 @@ function HistoryScreen({ logs, setLogs, chargingCycles, onBack, t }: any) {
         </button>
       </div>
 
+      {/* Native Ad 1 */}
+      <div className="my-1">
+        <GoogleNativeAppAd />
+      </div>
+
       <div className="space-y-4">
         {logs.length === 0 ? (
           <div className="text-center p-12 bg-slate-900/10 border border-slate-800/40 rounded-3xl">
@@ -3163,7 +3434,12 @@ function HistoryScreen({ logs, setLogs, chargingCycles, onBack, t }: any) {
         )}
       </div>
 
-      <GoogleAdMob slot={getAdUnitId('banner')} />
+      {/* Native Ad 2 */}
+      <div className="my-2">
+        <GoogleNativeAppAd />
+      </div>
+
+      <GoogleAdMob slot={getAdUnitId('banner')} position="BOTTOM_CENTER" />
     </motion.div>
   );
 }
@@ -3221,11 +3497,21 @@ function HealthScreen({ battery, batteryCapacity, chargingCycles, onBack, t }: a
         <p className="mt-4 text-[10px] text-slate-500 uppercase tracking-[0.3em] font-bold">{t.estimatedHealth}</p>
       </div>
 
+      {/* Native Ad 1 */}
+      <div className="my-1">
+        <GoogleNativeAppAd />
+      </div>
+
       <div className="grid grid-cols-2 gap-4">
         <StatusHealthItem label="Temp / तापमान" value={`${battery.temperature}°C`} sub={battery.temperature > 39 ? '🔥 Hot / गर्म' : '❄️ Cool / सामान्य'} />
         <StatusHealthItem label="Capacity / क्षमता" value={`${batteryCapacity} mAh`} sub={`Act: ${Math.round(battery.level * batteryCapacity)} mAh`} />
         <StatusHealthItem label="Cycles / चक्र" value={`${chargingCycles}`} sub="Total Plugs Count" />
         <StatusHealthItem label="Tech / तकनीक" value="Li-Polymer" sub="Smart Shield" />
+      </div>
+
+      {/* Native Ad 2 */}
+      <div className="my-1">
+        <GoogleNativeAppAd />
       </div>
 
       <div className="space-y-4">
@@ -3237,7 +3523,7 @@ function HealthScreen({ battery, batteryCapacity, chargingCycles, onBack, t }: a
         </div>
       </div>
 
-      <GoogleAdMob slot={getAdUnitId('banner')} />
+      <GoogleAdMob slot={getAdUnitId('banner')} position="BOTTOM_CENTER" />
     </motion.div>
   );
 }

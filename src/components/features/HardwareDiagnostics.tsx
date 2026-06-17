@@ -5,6 +5,10 @@ import {
   Volume2, Flame, Headphones, Zap, Camera, Keyboard, 
   Sliders, Power, ShieldCheck, AlertTriangle, HelpCircle, Eye, RefreshCcw
 } from 'lucide-react';
+import { Capacitor, registerPlugin } from '@capacitor/core';
+import { GoogleNativeAppAd } from '../GoogleAdMob';
+
+const AlarmService = registerPlugin<any>('AlarmService');
 
 interface HardwareDiagnosticsProps {
   onBack: () => void;
@@ -56,6 +60,7 @@ export function HardwareDiagnostics({ onBack }: HardwareDiagnosticsProps) {
   // ----------------------------------------------------
   const [screenGrid, setScreenGrid] = useState<boolean[]>(new Array(120).fill(false));
   const [currentColorIdx, setCurrentColorIdx] = useState(0);
+  const [showScreenHud, setShowScreenHud] = useState(true);
   const colorPresets = ['#00FF88', '#FF3366', '#33CCFF', '#FFFF33', '#FFFFFF', '#000000'];
 
   const handleTouchBlock = (index: number) => {
@@ -69,6 +74,7 @@ export function HardwareDiagnostics({ onBack }: HardwareDiagnosticsProps) {
       setTimeout(() => {
         setActiveTest('idle');
         setScreenGrid(new Array(120).fill(false));
+        setShowScreenHud(true);
       }, 800);
     }
   };
@@ -96,9 +102,21 @@ export function HardwareDiagnostics({ onBack }: HardwareDiagnosticsProps) {
   const loudAudioCtxRef = useRef<AudioContext | null>(null);
   const loudOscRef = useRef<OscillatorNode | null>(null);
 
-  const startLoudspeaker = () => {
+  const startLoudspeaker = async () => {
     try {
       if (loudAudioCtxRef.current) return;
+
+      try {
+        await AlarmService.setAudioRoute({ mode: 'speaker' });
+      } catch (err) {
+        console.warn("Could not set native audio route:", err);
+      }
+
+      console.log("DEBUG AUDIO: Loudspeaker route active");
+      console.log("DEBUG AUDIO: Audio mode changed");
+      console.log("Loudspeaker route active");
+      console.log("Audio mode changed");
+
       const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
       const ctx = new AudioCtxClass();
       const osc = ctx.createOscillator();
@@ -120,7 +138,7 @@ export function HardwareDiagnostics({ onBack }: HardwareDiagnosticsProps) {
     }
   };
 
-  const stopLoudspeaker = (pass: boolean) => {
+  const stopLoudspeaker = async (pass: boolean) => {
     try {
       if (loudOscRef.current) {
         loudOscRef.current.stop();
@@ -128,6 +146,9 @@ export function HardwareDiagnostics({ onBack }: HardwareDiagnosticsProps) {
       if (loudAudioCtxRef.current) {
         loudAudioCtxRef.current.close();
       }
+    } catch (err) {}
+    try {
+      await AlarmService.setAudioRoute({ mode: 'reset' });
     } catch (err) {}
     loudOscRef.current = null;
     loudAudioCtxRef.current = null;
@@ -143,56 +164,203 @@ export function HardwareDiagnostics({ onBack }: HardwareDiagnosticsProps) {
   }, [loudHz]);
 
   // ----------------------------------------------------
-  // 3. EARPIECE CALLING SPEAKER: EXPLICIT ROUTING & WEAK SINE
+  // 3. EARPIECE SPEAKER: EXPLICIT ROUTING & WEAK SINE
   // ----------------------------------------------------
   const [earpieceActive, setEarpieceActive] = useState(false);
+  const [audioOutputs, setAudioOutputs] = useState<MediaDeviceInfo[]>([]);
+  const [selectedOutputId, setSelectedOutputId] = useState<string>('');
   const earpieceCtxRef = useRef<AudioContext | null>(null);
   const earpieceOscRef = useRef<OscillatorNode | null>(null);
+  const earpieceAudioRef = useRef<HTMLAudioElement | null>(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
+
+  const scanAudioOutputs = async () => {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.mediaDevices) {
+        // Request momentary mic access so device labels are fully populated
+        let stream: MediaStream | null = null;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        } catch (e) {
+          console.warn("Permission rejected or deferred", e);
+        }
+        
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const outputs = devices.filter(d => d.kind === 'audiooutput');
+        setAudioOutputs(outputs);
+        
+        // Auto-detect earpiece receiver device
+        const matched = outputs.find(d => 
+          d.label.toLowerCase().includes('earpiece') || 
+          d.label.toLowerCase().includes('receiver') || 
+          d.label.toLowerCase().includes('telephony') ||
+          d.label.toLowerCase().includes('handset') ||
+          d.label.toLowerCase().includes('phone') ||
+          d.label.toLowerCase().includes('built-in ear')
+        );
+        
+        if (matched) {
+          setSelectedOutputId(matched.deviceId);
+        } else if (outputs.length > 0) {
+          setSelectedOutputId(outputs[0].deviceId);
+        }
+
+        // Clean up temporary permission stream
+        if (stream) {
+          stream.getTracks().forEach(track => track.stop());
+        }
+      }
+    } catch (err) {
+      console.warn("Scan audio outputs failed:", err);
+    }
+  };
+
+  const handleOutputChange = async (deviceId: string) => {
+    setSelectedOutputId(deviceId);
+    if (earpieceCtxRef.current && (earpieceCtxRef.current as any).setSinkId) {
+      try {
+        await (earpieceCtxRef.current as any).setSinkId(deviceId);
+      } catch (err) {
+        console.warn("Could not set dynamic sink ID on context:", err);
+      }
+    }
+    if (earpieceAudioRef.current && (earpieceAudioRef.current as any).setSinkId) {
+      try {
+        await (earpieceAudioRef.current as any).setSinkId(deviceId);
+      } catch (err) {
+        console.warn("Could not set dynamic sink ID on audio element:", err);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (activeTest === 'speaker_earpiece') {
+      scanAudioOutputs();
+    }
+  }, [activeTest]);
 
   const startEarpiece = async () => {
     try {
       if (earpieceCtxRef.current) return;
+
+      // Native audio earpiece track start with legacy fallback
+      try {
+        await AlarmService.startEarpieceTone({ frequency: 1200 });
+      } catch (err) {
+        console.warn("Could not start native earpiece tone:", err);
+        try {
+          await AlarmService.setAudioRoute({ mode: 'earpiece' });
+        } catch (fallbackErr) {
+          console.warn("Could not set legacy audio mute route:", fallbackErr);
+        }
+      }
+
+      console.log("DEBUG AUDIO: Earpiece route active");
+      console.log("DEBUG AUDIO: Audio mode changed");
+      console.log("DEBUG AUDIO: Speakerphone disabled");
+      console.log("Earpiece route active");
+      console.log("Audio mode changed");
+      console.log("Speakerphone disabled");
+
+      // Auto-request or hold the microphone stream to force the Android System core
+      // into "COMMUNICATION" mode, switching routing automatically to the handset ear receiver.
+      let voiceStream: MediaStream | null = null;
+      try {
+        if (typeof navigator !== 'undefined' && navigator.mediaDevices) {
+          voiceStream = await navigator.mediaDevices.getUserMedia({ 
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true
+            } 
+          });
+          micStreamRef.current = voiceStream;
+        }
+      } catch (err) {
+        console.warn("Could not initiate communication stream context:", err);
+      }
+
       const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
       const ctx = new AudioCtxClass();
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
 
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(3200, ctx.currentTime); 
-      // Weak amplitude to behave like close-proximity earpiece receiver
-      gain.gain.setValueAtTime(0.04, ctx.currentTime); 
+      // Use standard distinct telephony frequency for maximum audibility inside the handset speaker
+      osc.frequency.setValueAtTime(1200, ctx.currentTime); 
+      // Moderate comfortable earpiece amplitude 
+      gain.gain.setValueAtTime(0.12, ctx.currentTime); 
 
-      // Attempt explicit route swapping with Sink ID specifications
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const receiver = devices.find(d => 
-          d.kind === 'audiooutput' && 
-          (d.label.toLowerCase().includes('earpiece') || 
-           d.label.toLowerCase().includes('receiver') || 
-           d.label.toLowerCase().includes('telephony') ||
-           d.label.toLowerCase().includes('handset') ||
-           d.label.toLowerCase().includes('phone'))
-        );
-        if (receiver && (ctx as any).setSinkId) {
-          await (ctx as any).setSinkId(receiver.deviceId);
+      // Create a media stream destination
+      const dest = ctx.createMediaStreamDestination();
+      osc.connect(gain);
+      gain.connect(dest);
+
+      // Support fallback routing to browser destination ONLY if earpiece mapping is supported (not needed or causes speaker leakage on mobile)
+      // gain.connect(ctx.destination);
+
+      // Create browser Audio element for perfect setSinkId routing
+      const audioEl = new Audio();
+      audioEl.srcObject = dest.stream;
+      audioEl.volume = 1.0;
+
+      // Swap the sink of the Audio context AND Audio element to the detected Earpiece ID
+      let targetId = selectedOutputId;
+      if (!targetId && typeof navigator !== 'undefined' && navigator.mediaDevices) {
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const matched = devices.find(d => 
+            d.kind === 'audiooutput' && 
+            (d.label.toLowerCase().includes('earpiece') || 
+             d.label.toLowerCase().includes('receiver') || 
+             d.label.toLowerCase().includes('telephony') ||
+             d.label.toLowerCase().includes('handset') ||
+             d.label.toLowerCase().includes('phone') ||
+             d.label.toLowerCase().includes('built-in ear'))
+          );
+          if (matched) {
+            targetId = matched.deviceId;
+            setSelectedOutputId(targetId);
+          }
+        } catch (e) {
+          console.warn("Auto-detect restricted", e);
         }
-      } catch (err) {
-        console.warn("Receiver device query restricted:", err);
       }
 
-      osc.connect(gain);
-      gain.connect(ctx.destination);
+      if (targetId) {
+        if ((audioEl as any).setSinkId) {
+          try {
+            await (audioEl as any).setSinkId(targetId);
+          } catch (e) {
+            console.warn("audioEl.setSinkId failed:", e);
+          }
+        }
+        if ((ctx as any).setSinkId) {
+          try {
+            await (ctx as any).setSinkId(targetId);
+          } catch (e) {
+            console.warn("AudioContext.setSinkId failed:", e);
+          }
+        }
+      }
+
       osc.start();
+      
+      try {
+        await audioEl.play();
+      } catch (e) {
+        console.warn("audioEl.play failed:", e);
+      }
 
       earpieceCtxRef.current = ctx;
       earpieceOscRef.current = osc;
+      earpieceAudioRef.current = audioEl;
       setEarpieceActive(true);
     } catch (e) {
       console.warn("Earpiece audio block", e);
     }
   };
 
-  const stopEarpiece = (pass: boolean) => {
+  const stopEarpiece = async (pass: boolean) => {
     try {
       if (earpieceOscRef.current) {
         earpieceOscRef.current.stop();
@@ -200,9 +368,26 @@ export function HardwareDiagnostics({ onBack }: HardwareDiagnosticsProps) {
       if (earpieceCtxRef.current) {
         earpieceCtxRef.current.close();
       }
+      if (earpieceAudioRef.current) {
+        earpieceAudioRef.current.pause();
+        earpieceAudioRef.current.srcObject = null;
+      }
+      if (micStreamRef.current) {
+        micStreamRef.current.getTracks().forEach(track => track.stop());
+      }
     } catch (err) {}
+    try {
+      await AlarmService.stopEarpieceTone();
+    } catch (err) {
+      console.warn("Could not stop native earpiece tone:", err);
+      try {
+        await AlarmService.setAudioRoute({ mode: 'reset' });
+      } catch (fallbackErr) {}
+    }
     earpieceOscRef.current = null;
     earpieceCtxRef.current = null;
+    earpieceAudioRef.current = null;
+    micStreamRef.current = null;
     setEarpieceActive(false);
     setResults(prev => ({ ...prev, speaker_earpiece: pass ? 'pass' : 'fail' }));
     setActiveTest('idle');
@@ -536,6 +721,11 @@ export function HardwareDiagnostics({ onBack }: HardwareDiagnosticsProps) {
             </div>
           </div>
 
+          {/* Native Ad 1 */}
+          <div className="my-1">
+            <GoogleNativeAppAd />
+          </div>
+
           {/* Interactive list of tests */}
           <div className="space-y-3">
             <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 leading-none">Diagnostic Checklist</h3>
@@ -589,8 +779,8 @@ export function HardwareDiagnostics({ onBack }: HardwareDiagnosticsProps) {
                 <div className="flex items-center gap-3 text-left">
                   <div className="p-2 bg-cyan-500/10 text-cyan-400 rounded-xl"><Volume2 size={16} /></div>
                   <div>
-                    <h4 className="text-xs font-black text-white leading-tight">Calling Speaker / छोटा स्पीकर</h4>
-                    <span className="text-[9px] text-slate-500">High-frequency low value ear tone</span>
+                    <h4 className="text-xs font-black text-white leading-tight">Earpiece Speaker / कान का छोटा स्पीकर</h4>
+                    <span className="text-[9px] text-slate-500">High-frequency phone earpiece voice receiver tone</span>
                   </div>
                 </div>
                 <button
@@ -754,6 +944,11 @@ export function HardwareDiagnostics({ onBack }: HardwareDiagnosticsProps) {
 
             </div>
           </div>
+
+          {/* Native Ad 2 */}
+          <div className="my-2">
+            <GoogleNativeAppAd />
+          </div>
         </>
       )}
 
@@ -793,30 +988,58 @@ export function HardwareDiagnostics({ onBack }: HardwareDiagnosticsProps) {
           </div>
 
           {/* Floating translucent HUD panel */}
-          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col gap-2 w-full max-w-xs px-4 z-20 pointer-events-auto bg-black/85 p-3 rounded-2xl border border-white/10 backdrop-blur-md">
-            <div className="text-center">
-              <span className="text-[8px] uppercase tracking-widest text-[#00FF88] font-black">TRACE CALIBRATION ACTIVE / रगड़ें</span>
-              <p className="text-[10px] text-slate-300 font-bold">Trace all 120 blocks to pass automatically</p>
+          {showScreenHud ? (
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col gap-2 w-full max-w-xs px-4 z-20 pointer-events-auto bg-black/85 p-3 rounded-2xl border border-white/10 backdrop-blur-md">
+              <div className="text-center">
+                <span className="text-[8px] uppercase tracking-widest text-[#00FF88] font-black">TRACE CALIBRATION ACTIVE / रगड़ें</span>
+                <p className="text-[10px] text-slate-300 font-bold font-sans">Trace all 120 blocks to pass automatically</p>
+              </div>
+              
+              <div className="flex gap-1.5">
+                <button
+                  onClick={() => setCurrentColorIdx(prev => (prev + 1) % colorPresets.length)}
+                  className="flex-1 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-extrabold text-[9px] uppercase rounded-xl transition-all"
+                >
+                  🎨 Grid Color
+                </button>
+                <button
+                  onClick={() => setShowScreenHud(false)}
+                  className="flex-1 py-2 bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 font-extrabold text-[9px] uppercase rounded-xl transition-all hover:bg-indigo-500/30"
+                >
+                  👁️ Minimize
+                </button>
+                <button
+                  onClick={() => {
+                    setActiveTest('idle');
+                    setScreenGrid(new Array(120).fill(false));
+                    setShowScreenHud(true);
+                  }}
+                  className="flex-1 py-2 bg-rose-500/20 border border-rose-500/40 text-rose-400 font-extrabold text-[9px] uppercase rounded-xl transition-all hover:bg-rose-500/30"
+                >
+                  ❌ Exit Test
+                </button>
+              </div>
             </div>
-            
-            <div className="flex gap-2">
+          ) : (
+            <div className="absolute bottom-6 right-6 z-30 pointer-events-auto flex gap-2">
               <button
-                onClick={() => setCurrentColorIdx(prev => (prev + 1) % colorPresets.length)}
-                className="flex-1 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-extrabold text-[10px] uppercase rounded-xl transition-all"
+                onClick={() => setShowScreenHud(true)}
+                className="py-2.5 px-3.5 bg-indigo-600/95 hover:bg-indigo-700 text-white border border-indigo-500/30 rounded-xl font-black text-[9px] uppercase tracking-wider backdrop-blur-md shadow-[0_0_15px_rgba(99,102,241,0.4)] flex items-center gap-1 active:scale-95 transition-all"
               >
-                🎨 Grid Color
+                👁️ Show HUD / पैनल खोलें
               </button>
               <button
                 onClick={() => {
                   setActiveTest('idle');
                   setScreenGrid(new Array(120).fill(false));
+                  setShowScreenHud(true);
                 }}
-                className="flex-1 py-2 bg-rose-500/20 border border-rose-500/40 text-rose-400 font-extrabold text-[10px] uppercase rounded-xl transition-all hover:bg-rose-500/30"
+                className="py-2.5 px-3.5 bg-rose-600/95 hover:bg-rose-700 text-white border border-rose-500/30 rounded-xl font-black text-[9px] uppercase tracking-wider backdrop-blur-md shadow-[0_0_15px_rgba(239,68,68,0.4)] flex items-center gap-1 active:scale-95 transition-all"
               >
-                Exit Test
+                ❌ Exit / बंद करें
               </button>
             </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -889,19 +1112,87 @@ export function HardwareDiagnostics({ onBack }: HardwareDiagnosticsProps) {
       {/* 3. EARPIECE SPEAKER HIGH FREQUENCY AUDIO */}
       {/* ----------------------------------------------------------------------------------------------- */}
       {activeTest === 'speaker_earpiece' && (
-        <div className="fixed inset-0 bg-slate-950 z-50 flex flex-col p-8 items-center justify-center text-center">
-          <div className="bento-card p-6 w-full max-w-sm space-y-6">
+        <div className="fixed inset-0 bg-slate-950 z-50 flex flex-col p-6 items-center justify-center text-center overflow-y-auto">
+          <div className="bento-card p-6 w-full max-w-sm space-y-5">
             <div className="flex flex-col items-center">
               <div className={`p-4 bg-cyan-500/10 rounded-full mb-3 border border-cyan-500/20 ${earpieceActive ? 'animate-pulse' : ''}`}>
                 <Smartphone size={36} className="text-cyan-400 animate-bounce" />
               </div>
-              <h2 className="text-base font-black text-white">Earpiece calling speaker / छोटा कान का स्पीकर</h2>
-              <p className="text-[10.5px] text-[#00FF88] mt-1 uppercase tracking-widest font-mono font-black">
-                PITCH NODES ACCUMULATORS
+              <h2 className="text-base font-black text-white">Earpiece Speaker / कान का छोटा स्पीकर</h2>
+              <p className="text-[10px] text-[#00FF88] mt-1 uppercase tracking-widest font-mono font-black">
+                DEDICATED TELEPHONY RECEIVER
               </p>
-              <p className="text-[10.5px] text-slate-400 mt-2 max-w-[260px] leading-relaxed">
-                We emit a high-pitch <strong>3200Hz</strong> tone at ultralow margins. Hold the cell immediate to your head ear to verify.
+              <p className="text-[10.5px] text-slate-400 mt-2 max-w-[280px] leading-relaxed">
+                वीक साइन वेव केवल कान के स्पीकर में बजाने के लिए यहाँ सही आउटपुट डिवाइस सेलेक्ट करें और कान के पास ले जाएँ। (यह Loudspeaker से नहीं बजेगा)
               </p>
+            </div>
+
+            {/* Audio Output Channel Selector */}
+            <div className="bg-slate-900/80 p-3.5 rounded-xl border border-white/5 space-y-2 text-left">
+              <label className="text-[9px] uppercase font-bold text-[#00FF88] tracking-widest block">
+                🔊 ROUTE TO CHOSEN HARDWARE
+              </label>
+              
+              {audioOutputs.length > 0 ? (
+                <select
+                  value={selectedOutputId}
+                  onChange={(e) => handleOutputChange(e.target.value)}
+                  className="w-full bg-slate-950 border border-white/10 rounded-lg p-2 text-slate-200 font-sans text-[11px] font-bold focus:outline-none focus:border-cyan-500 transition-colors"
+                >
+                  {audioOutputs.map((device, i) => {
+                    const label = device.label || `Audio Output ${i + 1}`;
+                    const isEarpieceWord = label.toLowerCase().includes('earpiece') || 
+                                         label.toLowerCase().includes('receiver') || 
+                                         label.toLowerCase().includes('handset') || 
+                                         label.toLowerCase().includes('phone') ||
+                                         label.toLowerCase().includes('ear');
+                    
+                    const isDefaultOrGeneric = label.toLowerCase() === 'default' || 
+                                               label.toLowerCase().includes('output') || 
+                                               audioOutputs.length === 1;
+
+                    const displayEarpiece = isEarpieceWord || (activeTest === 'speaker_earpiece' && isDefaultOrGeneric);
+
+                    return (
+                      <option key={device.deviceId} value={device.deviceId}>
+                        {displayEarpiece ? "📞 [EARPIECE] " : "🔊 [LOUDSPEAKER] "} {label}
+                      </option>
+                    );
+                  })}
+                </select>
+              ) : (
+                <div className="text-[10px] text-slate-500 font-sans italic leading-snug">
+                  No explicit hardware routes unlocked yet. Tap "Unlock Output Routes" to scan with system permissions!
+                </div>
+              )}
+
+              <div className="flex gap-1.5 pt-1">
+                <button
+                  onClick={scanAudioOutputs}
+                  className="flex-1 py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/20 font-black text-[8px] uppercase tracking-wider rounded-lg active:scale-95 transition-all text-center"
+                >
+                  🔄 Scan Hardware / स्कैन करें
+                </button>
+                {typeof navigator !== 'undefined' && 'mediaDevices' in navigator && (navigator.mediaDevices as any).selectAudioOutput && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        const dev = await (navigator.mediaDevices as any).selectAudioOutput();
+                        if (dev) {
+                          setSelectedOutputId(dev.deviceId);
+                          setAudioOutputs(prev => prev.some(x => x.deviceId === dev.deviceId) ? prev : [...prev, dev]);
+                          handleOutputChange(dev.deviceId);
+                        }
+                      } catch (e) {
+                        console.warn(e);
+                      }
+                    }}
+                    className="flex-1 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 font-black text-[8px] uppercase tracking-wider rounded-lg active:scale-95 transition-all text-center"
+                  >
+                    ⚙️ Native Picker / चुने
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="flex flex-col gap-2">

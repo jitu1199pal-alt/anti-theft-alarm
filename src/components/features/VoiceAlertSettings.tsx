@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { ChevronLeft, Volume2, Play, CheckCircle2, ShieldCheck, Speech } from 'lucide-react';
 import { AlarmConfig } from '../../types';
+import { GoogleNativeAppAd } from '../GoogleAdMob';
 
 interface VoiceAlertSettingsProps {
   config: AlarmConfig;
@@ -151,6 +152,11 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
         </div>
       </div>
 
+      {/* Native Ad 1 */}
+      <div className="my-1">
+        <GoogleNativeAppAd />
+      </div>
+
       {/* Preset Custom Voice alert lists */}
       <div className="space-y-4">
         <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 leading-none">Select Voice Presets / आवाज चुनें</h3>
@@ -223,6 +229,11 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
             );
           })}
         </div>
+      </div>
+
+      {/* Native Ad 2 */}
+      <div className="my-2">
+        <GoogleNativeAppAd />
       </div>
 
       {/* Explanatory footer block */}

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { ChevronLeft, Zap, Shield, Sparkles, RefreshCw, Smartphone, Volume2, ShieldCheck } from 'lucide-react';
 import { AlarmConfig } from '../../types';
+import { GoogleNativeAppAd } from '../GoogleAdMob';
 
 interface StickyNotificationPreviewProps {
   battery: {
@@ -12,9 +13,10 @@ interface StickyNotificationPreviewProps {
   config: AlarmConfig;
   setConfig: React.Dispatch<React.SetStateAction<AlarmConfig>>;
   onBack: () => void;
+  triggerInterstitial?: (onDismiss: () => void) => void;
 }
 
-export function StickyNotificationPreview({ battery, config, setConfig, onBack }: StickyNotificationPreviewProps) {
+export function StickyNotificationPreview({ battery, config, setConfig, onBack, triggerInterstitial }: StickyNotificationPreviewProps) {
   const [boosting, setBoosting] = useState(false);
   const [boostedText, setBoostedText] = useState('Boost Phone');
 
@@ -26,6 +28,18 @@ export function StickyNotificationPreview({ battery, config, setConfig, onBack }
       setBoostedText('Clean & Boosted! ✅');
       setTimeout(() => setBoostedText('Boost Phone'), 2000);
     }, 1200);
+  };
+
+  const handleToggleSticky = () => {
+    const nextVal = !config.stickyNotificationEnabled;
+    if (nextVal && triggerInterstitial) {
+      // "Ese on karne par ak full screen intitial google admop test I'd ads run ho"
+      triggerInterstitial(() => {
+        setConfig(prev => ({ ...prev, stickyNotificationEnabled: true }));
+      });
+    } else {
+      setConfig(prev => ({ ...prev, stickyNotificationEnabled: nextVal }));
+    }
   };
 
   return (
@@ -41,7 +55,7 @@ export function StickyNotificationPreview({ battery, config, setConfig, onBack }
             <ChevronLeft size={20} className="text-white" />
           </button>
           <div>
-            <span className="text-[9px] uppercase tracking-wider text-accent font-extrabold">Configurator</span>
+            <span className="text-[9px] uppercase tracking-wider text-accent font-extrabold font-sans">Configurator</span>
             <h1 className="text-xl font-black text-white">Sticky Notification Panel / नोटिफिकेशन बार</h1>
           </div>
         </div>
@@ -49,22 +63,27 @@ export function StickyNotificationPreview({ battery, config, setConfig, onBack }
       </header>
 
       {/* Main Persistent Toggle Box */}
-      <div className="bento-card p-5 bg-slate-950 border border-white/5 space-y-4">
+      <div className="bento-card p-5 bg-slate-950 border border-white/5 space-y-4 text-left">
         <div className="flex items-center justify-between">
           <div className="text-left">
             <h3 className="text-xs font-black uppercase text-slate-500 tracking-wider">Master Strategy Toggle</h3>
-            <h2 className="text-base font-black text-white mt-0.5">Notification Panel Shortcut</h2>
+            <h2 className="text-base font-black text-white mt-0.5 font-sans">Notification Panel Shortcut</h2>
             <p className="text-[10px] text-slate-400 leading-normal mt-1">
               Toggle constant, low-battery resistant persistent overlay shortcuts in your system drawer shelf.
             </p>
           </div>
           <button
-            onClick={() => setConfig(prev => ({ ...prev, stickyNotificationEnabled: !prev.stickyNotificationEnabled }))}
-            className={`w-12 h-6 rounded-full transition-all relative shrink-0 ${config.stickyNotificationEnabled ? 'bg-[#00FF88]' : 'bg-slate-850'}`}
+            onClick={handleToggleSticky}
+            className={`w-12 h-6 rounded-full transition-all relative shrink-0 ${config.stickyNotificationEnabled ? 'bg-[#00FF88]' : 'bg-slate-800'}`}
           >
             <div className={`w-5 h-5 bg-black rounded-full absolute top-0.5 transition-all ${config.stickyNotificationEnabled ? 'left-6' : 'left-1'}`} />
           </button>
         </div>
+      </div>
+
+      {/* Native Ad 1 */}
+      <div className="my-1">
+        <GoogleNativeAppAd />
       </div>
 
       {/* Actual Drawer Shortcut Simulation preview frame */}
@@ -98,7 +117,7 @@ export function StickyNotificationPreview({ battery, config, setConfig, onBack }
                       ChargeGuard Pro Security
                       <Shield size={11} className="text-[#00FF88]" />
                     </h4>
-                    <span className="text-[9px] text-slate-400 mt-1 block">
+                    <span className="text-[9px] text-slate-400 mt-1 block font-sans">
                       Temp: <strong className="text-amber-400 font-mono">{battery.temperature}°C</strong> | Cores: Status Active
                     </span>
                   </div>
@@ -120,12 +139,17 @@ export function StickyNotificationPreview({ battery, config, setConfig, onBack }
             ) : (
               /* Empty state */
               <div className="p-6 bg-slate-900/40 border border-dashed border-white/5 rounded-2xl text-center">
-                <span className="text-[10px] text-slate-500 font-bold uppercase block">Sticky Bar Disabled</span>
-                <p className="text-[9px] text-slate-650 max-w-xs mx-auto mt-1">Enable "Sticky Shortcut" above to see the interactive launcher in action.</p>
+                <span className="text-[10px] text-slate-500 font-bold uppercase block font-sans">Sticky Bar Disabled</span>
+                <p className="text-[9px] text-slate-400 max-w-xs mx-auto mt-1">Enable "Sticky Shortcut" above to see the interactive launcher in action.</p>
               </div>
             )}
           </div>
         </div>
+      </div>
+
+      {/* Native Ad 2 */}
+      <div className="my-2">
+        <GoogleNativeAppAd />
       </div>
 
       {/* Strategy highlights / engagement factor list */}
@@ -134,7 +158,7 @@ export function StickyNotificationPreview({ battery, config, setConfig, onBack }
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
           <div className="p-4 bg-slate-900/30 border border-white/5 rounded-2xl text-left">
-            <span className="text-[8px] font-extrabold uppercase text-[#00FF88]">Daily Engagement Metric</span>
+            <span className="text-[8px] font-extrabold uppercase text-[#00FF88] font-sans">Daily Engagement Metric</span>
             <h4 className="text-xs font-bold text-white mt-0.5">2.5x Open Rates Surge</h4>
             <p className="text-[9.5px] text-slate-400 leading-relaxed mt-1">
               Users continuously preview temperature cycles directly from the status tray, resulting in continuous brand recall.
@@ -142,7 +166,7 @@ export function StickyNotificationPreview({ battery, config, setConfig, onBack }
           </div>
 
           <div className="p-4 bg-slate-900/30 border border-white/5 rounded-2xl text-left">
-            <span className="text-[8px] font-extrabold uppercase text-[#00FF88]">Ad-Integration Ready</span>
+            <span className="text-[8px] font-extrabold uppercase text-[#00FF88] font-sans">Ad-Integration Ready</span>
             <h4 className="text-xs font-bold text-white mt-0.5">Direct Cleaner Interstitials</h4>
             <p className="text-[9.5px] text-slate-400 leading-relaxed mt-1">
               Clicking the tray "Boost" button launches cleaner logs and triggers sponsored app panels instantly.

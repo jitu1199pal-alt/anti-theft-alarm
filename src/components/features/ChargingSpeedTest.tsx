@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Zap, Activity, ShieldCheck, Thermometer, ChevronLeft, Smartphone, Sliders, BatteryCharging, Info } from 'lucide-react';
+import { Zap, Activity, ShieldCheck, Thermometer, ChevronLeft, Smartphone, Sliders, BatteryCharging, Info, Clock } from 'lucide-react';
+import { GoogleNativeAppAd } from '../GoogleAdMob';
 
 interface ChargingSpeedTestProps {
   battery: {
@@ -90,36 +91,44 @@ export function ChargingSpeedTest({ battery, onBack }: ChargingSpeedTestProps) {
   const startTest = () => {
     setProgress(0);
     setTesting(true);
+    setTestStage('idle');
     setSpeedData(null);
   };
 
   // Accurate Physical Charging Estimation Equation:
   // - Converts mAh to Wh (using nominal 3.85V standard)
-  // - Factoring in conversion loss (85% standard PMIC efficiency)
+  // - Factoring in conversion loss (88% standard PMIC efficiency)
   // - Factoring in modern phone battery health decay & state-of-charge slowing (CV phase overhead)
-  const calculateChargingTimeMinutes = (watts: number, capacity_mAh: number) => {
+  const calculateChargingTimeMinutes = (watts: number, capacity_mAh: number, measuredAmps?: number, measuredVolts?: number) => {
     if (battery.level >= 0.99) return 0;
     
     // Remaining mAh needed to reach full capacity
     const remaining_mAh = (1 - battery.level) * capacity_mAh;
-    // Watt-hours needed = Ah * Volts (nominal is 3.85V)
-    const wattHoursNeeded = (remaining_mAh / 1000) * 3.85;
-    
-    // Charger efficiency standard (voltage conversion & cord impedance loss, normally ~88%)
-    const efficiency = 0.88;
-    const effectiveWatts = watts * efficiency;
-    
-    // Base charging hours
-    let hours = wattHoursNeeded / effectiveWatts;
-    
-    // CV Phase slowing compensation:
-    // Li-ion fast charges up to 80% (CC phase), then slows down exponentially (CV phase).
-    // If current level is already high, charging is much slower as wattage drops to protect chemistry.
-    if (battery.level >= 0.80) {
-      hours = hours * 1.8; // CV exponential slows down by 80%
+    let hours = 0;
+
+    if (measuredAmps && measuredAmps > 0.05) {
+      // Direct high-precision current integration:
+      // Time (Hours) = Remaining Capacity (Ah) / Current (Amps)
+      const remaining_Ah = remaining_mAh / 1000;
+      hours = remaining_Ah / measuredAmps;
+      
+      // Since Li-ion charging speed drops exponentially as it reaches 100% (CV stage),
+      // adjust for average curve compensation if the current level isn't high yet.
+      if (battery.level < 0.80) {
+        hours = hours * 1.12; // standard CC/CV averaging factor
+      } else {
+        hours = hours * 1.35; // slower terminal phase factor
+      }
     } else {
-      // Add a constant warm saturation overhead for the final topping phase
-      hours += 0.15; // ~10 minutes top-up overhead
+      const wattHoursNeeded = (remaining_mAh / 1000) * 3.85;
+      
+      // Charger efficiency standard (voltage conversion & cord impedance loss, normally ~88%)
+      const efficiency = 0.88;
+      const levelFactor = Math.max(0.15, 1 - (battery.level * 0.8)); // Throttle charge near 100%
+      const tempFactor = battery.temperature > 40 ? 0.7 : 1.0; // Thermal protection throttle
+      const effectiveWatts = watts * efficiency * levelFactor * tempFactor;
+      
+      hours = wattHoursNeeded / Math.max(1.5, effectiveWatts);
     }
     
     const totalMinutes = Math.round(hours * 60);
@@ -127,7 +136,11 @@ export function ChargingSpeedTest({ battery, onBack }: ChargingSpeedTestProps) {
     return Math.max(3, totalMinutes);
   };
 
-  const minutesToFull = calculateChargingTimeMinutes(chargerWattage, batteryCapacity);
+  // Determine current active duration estimation based on testing results
+  const minutesToFull = speedData && battery.charging 
+    ? calculateChargingTimeMinutes(speedData.wattage, batteryCapacity, speedData.current, speedData.voltage)
+    : calculateChargingTimeMinutes(chargerWattage, batteryCapacity);
+
   const estHours = Math.floor(minutesToFull / 60);
   const estMins = minutesToFull % 60;
 
@@ -144,7 +157,7 @@ export function ChargingSpeedTest({ battery, onBack }: ChargingSpeedTestProps) {
             <ChevronLeft size={20} className="text-white" />
           </button>
           <div>
-            <span className="text-[9px] uppercase tracking-wider text-accent font-extrabold">Diagnostics</span>
+            <span className="text-[9px] uppercase tracking-wider text-accent font-extrabold font-sans">Diagnostics</span>
             <h1 className="text-xl font-black text-white">Charging Speed Regulator / स्पीड जाँच</h1>
           </div>
         </div>
@@ -214,9 +227,14 @@ export function ChargingSpeedTest({ battery, onBack }: ChargingSpeedTestProps) {
         </div>
       </div>
 
+      {/* Native Ad 1 */}
+      <div className="my-2">
+        <GoogleNativeAppAd />
+      </div>
+
       {/* Charging Time Countdown Predictor card */}
       <div className="bento-card p-6 bg-gradient-to-br from-indigo-950/40 via-slate-950 to-emerald-950/20 border border-white/5 relative overflow-hidden text-center">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,#6366f108,transparent_60%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,#6366f108,transparent_60%)] pointer-events-none" />
 
         <div className="flex flex-col items-center">
           <div className="p-3 bg-indigo-500/10 text-indigo-400 rounded-full mb-3.5 border border-indigo-500/20">
@@ -247,7 +265,7 @@ export function ChargingSpeedTest({ battery, onBack }: ChargingSpeedTestProps) {
 
       {/* Speedometer Test Container */}
       <div className="bento-card p-6 flex flex-col items-center justify-center text-center relative overflow-hidden bg-slate-950/80 border border-white/5">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,#00FF880a,transparent_60%)]"></div>
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,#00FF880a,transparent_60%)] pointer-events-none"></div>
 
         {!testing && testStage === 'idle' && (
           <div className="space-y-6 py-6 w-full flex flex-col items-center justify-center">
@@ -313,21 +331,50 @@ export function ChargingSpeedTest({ battery, onBack }: ChargingSpeedTestProps) {
             {/* Diagnostic Metrics Matrix */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <div className="p-3 bg-slate-900/60 border border-white/5 rounded-2xl text-left">
-                <span className="text-[8px] uppercase tracking-wider text-slate-500 font-extrabold">Current Flow (Amp)</span>
+                <span className="text-[8px] uppercase tracking-wider text-slate-500 font-extrabold block">Current Flow (Amp)</span>
                 <p className="text-base font-black text-white font-mono mt-0.5">{battery.charging ? `${speedData.current} A` : '0.0 A'}</p>
                 <span className="text-[7px] text-slate-400">Direct interface</span>
               </div>
 
               <div className="p-3 bg-slate-900/60 border border-white/5 rounded-2xl text-left">
-                <span className="text-[8px] uppercase tracking-wider text-slate-500 font-extrabold">Operational Volts</span>
+                <span className="text-[8px] uppercase tracking-wider text-slate-500 font-extrabold block">Operational Volts</span>
                 <p className="text-base font-black text-white font-mono mt-0.5">{speedData.voltage} V</p>
                 <span className="text-[7px] text-slate-400">Bus voltage index</span>
               </div>
 
               <div className="p-3 bg-slate-900/60 border border-white/5 rounded-2xl text-left col-span-2 md:col-span-1">
-                <span className="text-[8px] uppercase tracking-wider text-slate-500 font-extrabold">Thermal Limit</span>
+                <span className="text-[8px] uppercase tracking-wider text-slate-500 font-extrabold block">Thermal Limit</span>
                 <p className="text-base font-black text-amber-400 font-mono mt-0.5">{speedData.temperature}°C</p>
                 <span className="text-[7px] text-slate-400">No thermal throttling</span>
+              </div>
+            </div>
+
+            {/* Elegant Live Estimation Box (No confusing formulas on screen) */}
+            <div className="p-4 rounded-2xl bg-[#00FF88]/5 border border-[#00FF88]/10 text-left flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-[#00FF88]/10 text-[#00FF88] rounded-xl flex items-center justify-center">
+                  <Clock size={18} />
+                </div>
+                <div>
+                  <h4 className="text-[10px] font-black uppercase tracking-wider text-[#00FF88]">
+                    Estimated Charge Time (चार्ज होने का समय)
+                  </h4>
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    Calculated live using active speed & ampere details
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="font-mono font-black text-sm text-[#00FF88] block">
+                  {battery.level >= 0.99 ? (
+                    'Battery Full ✅'
+                  ) : estHours > 0 ? (
+                    `${estHours} hr ${estMins} min`
+                  ) : (
+                    `${estMins} min`
+                  )}
+                </span>
+                <span className="text-[8px] text-slate-500 uppercase tracking-widest block mt-1">Remaining</span>
               </div>
             </div>
 
@@ -349,8 +396,13 @@ export function ChargingSpeedTest({ battery, onBack }: ChargingSpeedTestProps) {
         )}
       </div>
 
+      {/* Native Ad 2 */}
+      <div className="my-2">
+        <GoogleNativeAppAd />
+      </div>
+
       {/* Fast Charging Education Box */}
-      <div className="bento-card p-5 space-y-3 bg-[#0c101d] border border-[#00FF88]/10 text-left animate-slide-up">
+      <div className="bento-card p-5 space-y-3 bg-[#0c101d] border border-[#00FF88]/10 text-left">
         <h3 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
           <Activity size={14} className="text-[#00FF88]" />
           Understanding Charging Rates

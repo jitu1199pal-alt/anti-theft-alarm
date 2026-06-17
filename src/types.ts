@@ -57,6 +57,8 @@ export interface AlarmConfig {
   stickyNotificationEnabled?: boolean;
   stickyNotificationTitle?: string;
   stickyNotificationStyle?: 'compact' | 'detailed';
+  hasCustomizedLowBatteryPercentage?: boolean;
+  hasCustomizedTargetPercentage?: boolean;
 }
 
 export interface SecurityConfig {
