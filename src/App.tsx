@@ -26,7 +26,8 @@ import {
   CreditCard,
   Gift,
   Share2,
-  Check
+  Check,
+  Gamepad
 } from 'lucide-react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
@@ -71,6 +72,13 @@ import { auth, db } from './firebase';
 import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { GoogleAdMob, removeGlobalBanner } from './components/GoogleAdMob';
+import { FeatureHub } from './components/features/FeatureHub';
+import { ChargingSpeedTest } from './components/features/ChargingSpeedTest';
+import { BatteryPredictor } from './components/features/BatteryPredictor';
+import { JunkCleaner } from './components/features/JunkCleaner';
+import { VoiceAlertSettings } from './components/features/VoiceAlertSettings';
+import { HardwareDiagnostics } from './components/features/HardwareDiagnostics';
+import { StickyNotificationPreview } from './components/features/StickyNotificationPreview';
 
 // =====================================================================
 //                   ADMOB AD UNIT CONFIGURATION (REAL CONFIG)
@@ -133,6 +141,35 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   const [mainAudioContext, setMainAudioContext] = useState<AudioContext | null>(null);
+  
+  const speakText = (text: string) => {
+    if ('speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        const voices = window.speechSynthesis.getVoices();
+        
+        if (text.includes('bhai') || text.includes('khana')) {
+          const hiVoice = voices.find(v => v.lang.startsWith('hi') || v.lang.startsWith('in'));
+          if (hiVoice) {
+            utterance.voice = hiVoice;
+            utterance.lang = 'hi-IN';
+          }
+        } else {
+          const enVoice = voices.find(v => v.lang.startsWith('en'));
+          if (enVoice) {
+            utterance.voice = enVoice;
+            utterance.lang = 'en-US';
+          }
+        }
+        
+        utterance.volume = (alarmConfig?.volume ?? 80) / 100;
+        window.speechSynthesis.speak(utterance);
+      } catch (err) {
+        console.warn("SpeechSynthesis error:", err);
+      }
+    }
+  };
   const battery = useBattery();
   const [wasCharging, setWasCharging] = useState(battery.charging);
   const [isMonitoring, setIsMonitoring] = useState(() => {
@@ -452,25 +489,6 @@ export default function App() {
     }
   }, [isMonitoring]);
 
-  const prevChargingRef = useRef(battery.charging);
-  // Automatically arm active alarm set to 98% and start monitoring immediately when charger is plugged in (same as clicking "Set Alarm" manually)
-  useEffect(() => {
-    const wasPluggedInTransition = battery.charging && !prevChargingRef.current;
-    if (wasPluggedInTransition) {
-      setAlarmConfig(prev => {
-        if (prev.targetPercentage !== 98) {
-          return { ...prev, targetPercentage: 98 };
-        }
-        return prev;
-      });
-      setIsMonitoring(true);
-      setAudioUnlocked(true);
-      if (mainAudioContext) {
-        mainAudioContext.resume().catch(() => {});
-      }
-    }
-    prevChargingRef.current = battery.charging;
-  }, [battery.charging, mainAudioContext]);
 
   // Basic Auth setup
   useEffect(() => {
@@ -714,7 +732,8 @@ export default function App() {
         if (parsed && typeof parsed === 'object') {
           if (!parsed.batteryCapacity) parsed.batteryCapacity = 5000;
           if (parsed.vibrate === undefined) parsed.vibrate = true;
-          parsed.lowBatteryPercentage = 20; // Force low battery alarm to 20% as requested
+          if (parsed.lowBatteryPercentage === undefined) parsed.lowBatteryPercentage = 20;
+          if (parsed.targetPercentage === undefined) parsed.targetPercentage = 98;
           return parsed;
         }
       } catch (e) {
@@ -725,7 +744,7 @@ export default function App() {
       targetPercentage: 98,
       lowBatteryPercentage: 20, // Force 20% as requested
       enabled: true,
-      sound: AlarmSound.DEFAULT,
+      sound: AlarmSound.CYBER,
       volume: 80,
       repeat: false,
       voiceAlert: true,
@@ -748,19 +767,30 @@ export default function App() {
     return { ...config, theftAlarm: true };
   });
 
-  // Auto-enable monitoring and lock 98/20 config when permissions are allowed
+  const prevChargingRef = useRef(battery.charging);
+  // Automatically arm active alarm and start monitoring immediately when charger is plugged in (same as clicking "Set Alarm" manually)
+  useEffect(() => {
+    const wasPluggedInTransition = battery.charging && !prevChargingRef.current;
+    if (wasPluggedInTransition) {
+      setIsMonitoring(true);
+      setAudioUnlocked(true);
+      if (mainAudioContext) {
+        mainAudioContext.resume().catch(() => {});
+      }
+      if (alarmConfig.connectVoiceSpeakEnabled !== false) {
+        speakText(alarmConfig.connectVoiceSpeakText || "Thank you for charging me!");
+      }
+    }
+    prevChargingRef.current = battery.charging;
+  }, [battery.charging, mainAudioContext, alarmConfig.connectVoiceSpeakEnabled, alarmConfig.connectVoiceSpeakText]);
+
+  // Auto-enable monitoring when permissions are allowed
   useEffect(() => {
     if (Capacitor.isNativePlatform()) {
       if (nativePermissions.batteryIgnored && nativePermissions.overlayAllowed && hasNotificationPermission) {
         if (!isMonitoring) {
           setIsMonitoring(true);
         }
-        setAlarmConfig(prev => {
-          if (prev.targetPercentage !== 98 || prev.lowBatteryPercentage !== 20) {
-            return { ...prev, targetPercentage: 98, lowBatteryPercentage: 20 };
-          }
-          return prev;
-        });
       }
     }
   }, [nativePermissions, hasNotificationPermission, isMonitoring]);
@@ -942,6 +972,9 @@ export default function App() {
       if (screen !== Screen.LOCK) {
         setAlarmReason('full');
         setScreen(Screen.LOCK);
+        if (alarmConfig.fullVoiceSpeakEnabled !== false) {
+          speakText(alarmConfig.fullVoiceSpeakText || "Sir, please unplug the charger, battery is full!");
+        }
       }
     }
 
@@ -1038,7 +1071,7 @@ export default function App() {
 
       setAlarmReason(null);
 
-      if (skipAd) {
+      if (skipAd || currentReason === 'low' || currentReason === 'full' || currentReason === 'theft') {
         setScreen(Screen.HOME);
         if (Capacitor.isNativePlatform()) {
           try {
@@ -1075,7 +1108,31 @@ export default function App() {
           t={t} 
         />
       );
-    default: return <HomeScreen battery={battery} config={alarmConfig} setConfig={setAlarmConfig} isMonitoring={isMonitoring} setMonitoring={setIsMonitoring} setScreen={setScreen} nativePermissions={nativePermissions} hasOtherPermissionsConfirmed={hasOtherPermissionsConfirmed} setHasOtherPermissionsConfirmed={setHasOtherPermissionsConfirmed} onTest={() => { setAlarmReason('test'); setScreen(Screen.LOCK); }} t={t} />;
+      case Screen.FEATURES:
+        return (
+          <FeatureHub 
+            battery={battery} 
+            alarmConfig={alarmConfig} 
+            setAlarmConfig={setAlarmConfig} 
+            setScreen={setScreen} 
+            onBoostIcon={() => {
+              speakText("Phone memory and background processes successfully boosted!");
+            }} 
+          />
+        );
+      case Screen.SPEED_TEST:
+        return <ChargingSpeedTest battery={battery} onBack={() => setScreen(Screen.FEATURES)} />;
+      case Screen.PREDICTOR:
+        return <BatteryPredictor battery={battery} onBack={() => setScreen(Screen.FEATURES)} />;
+      case Screen.CLEANER:
+        return <JunkCleaner onBack={() => setScreen(Screen.FEATURES)} />;
+      case Screen.VOICE_ALERTS:
+        return <VoiceAlertSettings config={alarmConfig} setConfig={setAlarmConfig} onBack={() => setScreen(Screen.FEATURES)} />;
+      case Screen.DIAGNOSTICS:
+        return <HardwareDiagnostics onBack={() => setScreen(Screen.FEATURES)} />;
+      case Screen.NOTIFICATION_PREVIEW:
+        return <StickyNotificationPreview battery={battery} config={alarmConfig} setConfig={setAlarmConfig} onBack={() => setScreen(Screen.FEATURES)} />;
+      default: return <HomeScreen battery={battery} config={alarmConfig} setConfig={setAlarmConfig} isMonitoring={isMonitoring} setMonitoring={setIsMonitoring} setScreen={setScreen} nativePermissions={nativePermissions} hasOtherPermissionsConfirmed={hasOtherPermissionsConfirmed} setHasOtherPermissionsConfirmed={setHasOtherPermissionsConfirmed} onTest={() => { setAlarmReason('test'); setScreen(Screen.LOCK); }} t={t} />;
   }
 };
 
@@ -1708,6 +1765,7 @@ export default function App() {
           "bottom-0"
         )}>
           <NavButton active={screen === Screen.HOME} icon={Battery} onClick={() => setScreen(Screen.HOME)} />
+          <NavButton active={screen === Screen.FEATURES || screen === Screen.SPEED_TEST || screen === Screen.PREDICTOR || screen === Screen.CLEANER || screen === Screen.VOICE_ALERTS || screen === Screen.DIAGNOSTICS || screen === Screen.NOTIFICATION_PREVIEW} icon={Gamepad} onClick={() => setScreen(Screen.FEATURES)} />
           <NavButton active={screen === Screen.HISTORY} icon={History} onClick={() => setScreen(Screen.HISTORY)} />
           <NavButton active={screen === Screen.HEALTH} icon={Activity} onClick={() => setScreen(Screen.HEALTH)} />
           <NavButton active={screen === Screen.SECURITY} icon={Shield} onClick={() => setScreen(Screen.SECURITY)} />
@@ -2279,7 +2337,7 @@ function HomeScreen({
           </div>
         </div>
  
-        {/* Alarm Threshold - Locked Intelligent Battery Guard Settings */}
+        {/* Alarm Threshold - Adjustable Intelligent Battery Guard Settings */}
         <div className="col-span-12 bento-card p-6 flex flex-col gap-4 relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 via-transparent to-emerald-500/5 pointer-events-none" />
           <div className="flex items-center gap-2.5 relative z-10">
@@ -2292,20 +2350,60 @@ function HomeScreen({
           </div>
 
           <p className="text-xs font-semibold leading-relaxed text-slate-300 relative z-10 font-sans">
-            Automatically alarm system first setup permission and without open charging app please charge plugin start automatically alarm
+            Adjust the slider below to set your custom battery alarm levels. Default settings are 20% and 98%.
           </p>
 
-          <div className="grid grid-cols-2 gap-3 relative z-10 mt-1">
-            <div className="p-3.5 bg-slate-950/80 border border-white/5 rounded-2xl flex flex-col gap-1 items-center justify-center text-center">
-              <span className="text-[9px] uppercase tracking-wider text-slate-500 font-extrabold font-sans">Minimum Charge</span>
-              <span className="text-2xl font-black text-rose-500 font-mono">20%</span>
-              <span className="text-[8px] text-slate-400 font-medium font-sans">Low Warning limit</span>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10 mt-1">
+            {/* Minimum Charge Section (Low Alarm Slider) */}
+            <div className="p-4 bg-slate-950/80 border border-white/5 rounded-[1.25rem] flex flex-col gap-3">
+              <div className="flex justify-between items-center">
+                <div className="flex flex-col text-left">
+                  <span className="text-[10px] uppercase tracking-wider text-slate-400 font-extrabold font-sans">Minimum Charge / न्यूनतम स्तर</span>
+                  <span className="text-[9px] text-rose-500/80 font-bold font-sans">Low Alarm / कम बैटरी पर अलार्म</span>
+                </div>
+                <span className="text-2xl font-black text-rose-500 font-mono">{config.lowBatteryPercentage}%</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] text-slate-500 font-mono">10%</span>
+                <input
+                  type="range"
+                  min="10"
+                  max="45"
+                  value={config.lowBatteryPercentage}
+                  onChange={(e) => setConfig({ ...config, lowBatteryPercentage: parseInt(e.target.value, 10) })}
+                  className="flex-1 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-rose-500"
+                  style={{
+                    background: `linear-gradient(to right, #f43f5e 0%, #f43f5e ${(config.lowBatteryPercentage - 10) / (45 - 10) * 100}%, #1e293b ${(config.lowBatteryPercentage - 10) / (45 - 10) * 100}%, #1e293b 100%)`
+                  }}
+                />
+                <span className="text-[10px] text-slate-500 font-mono">45%</span>
+              </div>
             </div>
 
-            <div className="p-3.5 bg-slate-950/80 border border-white/5 rounded-2xl flex flex-col gap-1 items-center justify-center text-center">
-              <span className="text-[9px] uppercase tracking-wider text-slate-500 font-extrabold font-sans">Maximum Charge</span>
-              <span className="text-2xl font-black text-[#00FF88] font-mono">98%</span>
-              <span className="text-[8px] text-slate-400 font-medium font-sans">Full protect limit</span>
+            {/* Maximum Charge Section (Full Alarm Slider) */}
+            <div className="p-4 bg-slate-950/80 border border-white/5 rounded-[1.25rem] flex flex-col gap-3">
+              <div className="flex justify-between items-center">
+                <div className="flex flex-col text-left">
+                  <span className="text-[10px] uppercase tracking-wider text-slate-400 font-extrabold font-sans">Maximum Charge / अधिकतम स्तर</span>
+                  <span className="text-[9px] text-[#00FF88]/80 font-bold font-sans">Full Alarm / फुल चार्ज पर अलार्म</span>
+                </div>
+                <span className="text-2xl font-black text-[#00FF88] font-mono">{config.targetPercentage}%</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] text-slate-500 font-mono">50%</span>
+                <input
+                  type="range"
+                  min="50"
+                  max="100"
+                  value={config.targetPercentage}
+                  onChange={(e) => setConfig({ ...config, targetPercentage: parseInt(e.target.value, 10) })}
+                  className="flex-1 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-[#00FF88]"
+                  style={{
+                    background: `linear-gradient(to right, #00FF88 0%, #00FF88 ${(config.targetPercentage - 50) / (100 - 50) * 100}%, #1e293b ${(config.targetPercentage - 50) / (100 - 50) * 100}%, #1e293b 100%)`
+                  }}
+                />
+                <span className="text-[10px] text-slate-500 font-mono">100%</span>
+              </div>
             </div>
           </div>
         </div>
@@ -2690,17 +2788,33 @@ function AlarmSettings({ config, setConfig, onBack, t }: any) {
         <div className="bento-card space-y-4">
           <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-slate-500">
             <span>{t.lowBatteryAlert}</span>
-            <span className="text-accent">20% (Fixed)</span>
+            <span className="text-accent">{config.lowBatteryPercentage}%</span>
           </div>
           <input 
             type="range" 
-            min="20"
-            max="20"
-            className="w-full h-2 accent-accent bg-slate-800 rounded-full appearance-none opacity-50 cursor-not-allowed" 
-            value={20} 
-            disabled
+            min="10"
+            max="45"
+            className="w-full h-2 accent-accent bg-slate-800 rounded-full appearance-none cursor-pointer" 
+            value={config.lowBatteryPercentage} 
+            onChange={e => setConfig({...config, lowBatteryPercentage: parseInt(e.target.value)})} 
           />
-          <p className="text-[9px] text-slate-600 italic">This is fixed at 20% as requested.</p>
+          <p className="text-[9px] text-slate-600 italic">Adjust کم / न्यूनतम बैटरी अलार्म सीमा (10% - 45%)</p>
+        </div>
+
+        <div className="bento-card space-y-4">
+          <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-slate-500">
+            <span>High Battery Alert / फुल चार्ज अलार्म</span>
+            <span className="text-accent">{config.targetPercentage}%</span>
+          </div>
+          <input 
+            type="range" 
+            min="50"
+            max="100"
+            className="w-full h-2 accent-accent bg-slate-800 rounded-full appearance-none cursor-pointer" 
+            value={config.targetPercentage} 
+            onChange={e => setConfig({...config, targetPercentage: parseInt(e.target.value)})} 
+          />
+          <p className="text-[9px] text-slate-600 italic">Adjust full / target maximum charge warning level (50% - 100%)</p>
         </div>
 
         <div className="bento-card space-y-4">
@@ -3214,13 +3328,13 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
   };
 
   useEffect(() => {
-    if (reason === 'theft') {
+    if (reason === 'theft' || reason === 'low') {
       const timer = setTimeout(() => {
-        console.log("Automatically disarming theft alarm after 3 seconds");
+        console.log(`Automatically disarming ${reason} alarm after 5 seconds`);
         if (onStopRef.current) {
           onStopRef.current(true, false, false);
         }
-      }, 3000);
+      }, 5000);
       return () => clearTimeout(timer);
     }
   }, [reason]);
@@ -3360,10 +3474,11 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
           break;
         default:
           oscillator.type = 'square';
-          oscillator.frequency.setValueAtTime(2040, audioCtx.currentTime);
-          oscillator.frequency.exponentialRampToValueAtTime(1020, audioCtx.currentTime + 0.4);
-          gainNode.gain.setValueAtTime(vol * 2.0, audioCtx.currentTime);
-          gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.8);
+          oscillator.frequency.setValueAtTime(1500, audioCtx.currentTime);
+          oscillator.frequency.setValueAtTime(500, audioCtx.currentTime + 0.2);
+          oscillator.frequency.setValueAtTime(2000, audioCtx.currentTime + 0.4);
+          oscillator.frequency.setValueAtTime(800, audioCtx.currentTime + 0.6);
+          gainNode.gain.setValueAtTime(vol * 2.2, audioCtx.currentTime);
           break;
       }
 
@@ -3410,17 +3525,19 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
     return (
       <div className="absolute inset-0 bg-slate-950 z-[110] flex flex-col items-center justify-center p-8 space-y-6">
         {/* 📱 Open APK Button (30s Ad Trigger) */}
-        <div className="absolute top-6 left-0 right-0 px-8 flex justify-center z-[120]">
-          <button 
-            onClick={() => onStop(true, true)}
-            className="w-full max-w-[320px] bg-gradient-to-r from-accent to-emerald-400 text-black font-black uppercase tracking-widest py-3 px-6 rounded-full text-xs shadow-lg shadow-accent/25 transition-all duration-200 hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2 animate-bounce animate-infinite"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-            </svg>
-            <span>APK OPEN</span>
-          </button>
-        </div>
+        {reason && reason !== 'low' && reason !== 'full' && reason !== 'theft' && (
+          <div className="absolute top-6 left-0 right-0 px-8 flex justify-center z-[120]">
+            <button 
+              onClick={() => onStop(true, true)}
+              className="w-full max-w-[320px] bg-gradient-to-r from-accent to-emerald-400 text-black font-black uppercase tracking-widest py-3 px-6 rounded-full text-xs shadow-lg shadow-accent/25 transition-all duration-200 hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2 animate-bounce animate-infinite"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+              <span>APK OPEN</span>
+            </button>
+          </div>
+        )}
 
         <div className="w-20 h-20 bg-slate-900 rounded-full flex items-center justify-center">
           <Moon size={40} className="text-slate-500" />
@@ -3468,15 +3585,17 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
         
         <div className="pt-8 text-center flex flex-col items-center w-full">
           {/* 📱 Open APK Button (Ad Trigger) placed just above the percentage */}
-          <button 
-            onClick={() => onStop(true, true)}
-            className="mb-6 w-full max-w-[280px] bg-gradient-to-r from-accent to-emerald-400 text-black font-black uppercase tracking-widest py-3.5 px-6 rounded-full text-xs shadow-lg shadow-accent/25 transition-all duration-200 hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2 animate-bounce animate-infinite cursor-pointer"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-            </svg>
-            <span>APK OPEN</span>
-          </button>
+          {reason && reason !== 'low' && reason !== 'full' && reason !== 'theft' && (
+            <button 
+              onClick={() => onStop(true, true)}
+              className="mb-6 w-full max-w-[280px] bg-gradient-to-r from-accent to-emerald-400 text-black font-black uppercase tracking-widest py-3.5 px-6 rounded-full text-xs shadow-lg shadow-accent/25 transition-all duration-200 hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2 animate-bounce animate-infinite cursor-pointer"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+              <span>APK OPEN</span>
+            </button>
+          )}
 
           <p className="text-7xl font-black text-white tracking-tighter">{Math.round(battery.level * 100)}<span className="text-2xl text-slate-500">%</span></p>
           <div className="flex items-center justify-center gap-2 mt-4 bg-white/5 border border-white/10 px-4 py-2 rounded-2xl">
@@ -3512,7 +3631,7 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
         )}
 
         {/* Premium Pulsing Disable Alarm Button - Render and support for low battery, full battery, anti-theft, and test alarms */}
-        {reason && (
+        {reason && reason !== 'low' && (
           <div className="w-full flex justify-center">
             <motion.button
               whileTap={{ scale: 0.95 }}

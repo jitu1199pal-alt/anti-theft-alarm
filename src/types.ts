@@ -16,7 +16,14 @@ export enum Screen {
   HEALTH = 'health',
   THEMES = 'themes',
   LOCK = 'lock',
-  ADS = 'ads'
+  ADS = 'ads',
+  FEATURES = 'features',
+  SPEED_TEST = 'speed_test',
+  PREDICTOR = 'predictor',
+  CLEANER = 'cleaner',
+  VOICE_ALERTS = 'voice_alerts',
+  DIAGNOSTICS = 'diagnostics',
+  NOTIFICATION_PREVIEW = 'notification_preview'
 }
 
 export type Theme = 'dark' | 'light' | 'neon';
@@ -43,6 +50,13 @@ export interface AlarmConfig {
   tempWarningLevel: number;
   batteryCapacity?: number;
   vibrate: boolean;
+  connectVoiceSpeakEnabled?: boolean;
+  fullVoiceSpeakEnabled?: boolean;
+  connectVoiceSpeakText?: string;
+  fullVoiceSpeakText?: string;
+  stickyNotificationEnabled?: boolean;
+  stickyNotificationTitle?: string;
+  stickyNotificationStyle?: 'compact' | 'detailed';
 }
 
 export interface SecurityConfig {
