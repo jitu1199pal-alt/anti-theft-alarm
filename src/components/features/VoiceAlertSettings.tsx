@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { ChevronLeft, Volume2, Play, CheckCircle2, ShieldCheck, Speech } from 'lucide-react';
 import { AlarmConfig } from '../../types';
-import { GoogleNativeAppAd } from '../GoogleAdMob';
+import { triggerInterstitialAd } from '../GoogleAdMob';
 
 interface VoiceAlertSettingsProps {
   config: AlarmConfig;
@@ -13,6 +13,43 @@ interface VoiceAlertSettingsProps {
 export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSettingsProps) {
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const handleToggleConnect = () => {
+    const isTurningOn = !config.connectVoiceSpeakEnabled;
+    if (isTurningOn) {
+      triggerInterstitialAd(() => {
+        setConfig(prev => ({ ...prev, connectVoiceSpeakEnabled: true }));
+      }, 'security');
+    } else {
+      setConfig(prev => ({ ...prev, connectVoiceSpeakEnabled: false }));
+    }
+  };
+
+  const handleToggleFull = () => {
+    const isTurningOn = !config.fullVoiceSpeakEnabled;
+    if (isTurningOn) {
+      triggerInterstitialAd(() => {
+        setConfig(prev => ({ ...prev, fullVoiceSpeakEnabled: true }));
+      }, 'security');
+    } else {
+      setConfig(prev => ({ ...prev, fullVoiceSpeakEnabled: false }));
+    }
+  };
+
+  const connectInputRef = React.useRef<HTMLInputElement>(null);
+  const fullInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleConnectReplaceClick = () => {
+    triggerInterstitialAd(() => {
+      connectInputRef.current?.click();
+    }, 'sensors');
+  };
+
+  const handleFullReplaceClick = () => {
+    triggerInterstitialAd(() => {
+      fullInputRef.current?.click();
+    }, 'sensors');
+  };
 
   const [hasCustomConnect, setHasCustomConnect] = useState<boolean>(() => {
     try {
@@ -127,6 +164,63 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
     }));
   };
 
+  const playWebAudioChime = (volumeVal: number) => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+
+      osc1.connect(gainNode);
+      osc2.connect(gainNode);
+      gainNode.connect(ctx.destination);
+
+      const now = ctx.currentTime;
+      
+      osc1.frequency.setValueAtTime(880, now); // A5
+      osc1.frequency.exponentialRampToValueAtTime(1320, now + 0.15); // E6
+      
+      osc2.frequency.setValueAtTime(440, now); // A4
+      osc2.frequency.exponentialRampToValueAtTime(880, now + 0.15); // A5
+
+      gainNode.gain.setValueAtTime(0, now);
+      gainNode.gain.linearRampToValueAtTime(volumeVal * 0.15, now + 0.05);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + 0.4);
+      osc2.stop(now + 0.4);
+    } catch (e) {
+      console.error("Web Audio Chime failed", e);
+    }
+  };
+
+  const speakFallbackSpeech = (textToSpeak: string, pId: string) => {
+    if (!('speechSynthesis' in window)) {
+      playWebAudioChime(config.volume / 100);
+      return;
+    }
+    try {
+      window.speechSynthesis.cancel(); // Clears any ongoing speech
+      const utterance = new SpeechSynthesisUtterance(textToSpeak);
+      utterance.volume = config.volume / 100;
+      utterance.lang = pId === 'hindi_comedy' ? 'hi-IN' : 'en-US';
+      utterance.onend = () => setPlayingVoice(null);
+      utterance.onerror = () => {
+        playWebAudioChime(config.volume / 100);
+        setPlayingVoice(null);
+      };
+      window.speechSynthesis.speak(utterance);
+    } catch (err) {
+      console.warn("Speech synthesis fallback failed:", err);
+      playWebAudioChime(config.volume / 100);
+      setPlayingVoice(null);
+    }
+  };
+
   const handleSpeechSpeak = (text: string, type: 'connect' | 'full', presetId: string) => {
     try {
       let audio: HTMLAudioElement;
@@ -137,7 +231,7 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
           console.log("Playing custom connection tone for preview");
           audio = new Audio(customConnect);
         } else {
-          audio = new Audio(`audio/${presetId}_${type}.mp3`);
+          audio = new Audio(window.location.origin + `/audio/${presetId}_${type}.mp3`);
         }
       } else {
         const customFull = localStorage.getItem('custom_audio_full');
@@ -145,7 +239,7 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
           console.log("Playing custom full charged tone for preview");
           audio = new Audio(customFull);
         } else {
-          audio = new Audio(`audio/${presetId}_${type}.mp3`);
+          audio = new Audio(window.location.origin + `/audio/${presetId}_${type}.mp3`);
         }
       }
 
@@ -164,19 +258,17 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
         setPlayingVoice(null);
       };
       audio.onerror = (err) => {
-        console.warn("Offline voice MP3 playback failed:", err);
-        setPlayingVoice(null);
-        setErrorMsg("Failed to play the requested preset sound file.");
+        console.warn("Offline voice MP3 playback failed, falling back to TTS:", err);
+        speakFallbackSpeech(text, presetId);
       };
 
       audio.play().catch(e => {
-        console.warn("Offline voice playable exception:", e);
-        setPlayingVoice(null);
-        setErrorMsg("Failed to play preset sound. Check tab permissions or volume.");
+        console.warn("Offline voice playable exception, falling back to TTS:", e);
+        speakFallbackSpeech(text, presetId);
       });
     } catch (e) {
-      console.error(e);
-      setPlayingVoice(null);
+      console.error("Audio block error, falling back to TTS:", e);
+      speakFallbackSpeech(text, presetId);
     }
   };
 
@@ -235,7 +327,7 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
               <p className="text-[9.5px] text-slate-400">Speak "Thank you for charging me" when cable matches</p>
             </div>
             <button
-              onClick={() => setConfig(prev => ({ ...prev, connectVoiceSpeakEnabled: !prev.connectVoiceSpeakEnabled }))}
+              onClick={handleToggleConnect}
               className={`w-12 h-6 rounded-full transition-all relative ${config.connectVoiceSpeakEnabled ? 'bg-[#00FF88]' : 'bg-slate-800'}`}
             >
               <div className={`w-5 h-5 bg-black rounded-full absolute top-0.5 transition-all ${config.connectVoiceSpeakEnabled ? 'left-6' : 'left-1'}`} />
@@ -249,7 +341,7 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
               <p className="text-[9.5px] text-slate-400">Voice shoutout "Sir, please unplug..." at 100% limit</p>
             </div>
             <button
-              onClick={() => setConfig(prev => ({ ...prev, fullVoiceSpeakEnabled: !prev.fullVoiceSpeakEnabled }))}
+              onClick={handleToggleFull}
               className={`w-12 h-6 rounded-full transition-all relative ${config.fullVoiceSpeakEnabled ? 'bg-[#00FF88]' : 'bg-slate-800'}`}
             >
               <div className={`w-5 h-5 bg-black rounded-full absolute top-0.5 transition-all ${config.fullVoiceSpeakEnabled ? 'left-6' : 'left-1'}`} />
@@ -258,10 +350,7 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
         </div>
       </div>
 
-      {/* Native Ad 1 */}
-      <div className="my-1">
-        <GoogleNativeAppAd />
-      </div>
+
 
       {/* 🔌 Replace Connection Tone with Custom MP3 */}
       <div className="bento-card p-5 space-y-4 bg-slate-950 border border-white/5">
@@ -281,15 +370,19 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
               </p>
             </div>
             <div className="flex items-center gap-2 mt-1 sm:mt-0">
-              <label className="p-2 px-3 bg-[#00FF88]/15 hover:bg-[#00FF88]/25 border border-[#00FF88]/20 text-[#00FF88] text-[10px] font-extrabold uppercase rounded-xl cursor-pointer transition-all active:scale-95 text-center shrink-0">
+              <button 
+                onClick={handleConnectReplaceClick}
+                className="p-2 px-3 bg-[#00FF88]/15 hover:bg-[#00FF88]/25 border border-[#00FF88]/20 text-[#00FF88] text-[10px] font-extrabold uppercase rounded-xl cursor-pointer transition-all active:scale-95 text-center shrink-0"
+              >
                 Replace MP3
-                <input 
-                  type="file" 
-                  accept="audio/*" 
-                  className="hidden" 
-                  onChange={handleConnectUpload} 
-                />
-              </label>
+              </button>
+              <input 
+                ref={connectInputRef}
+                type="file" 
+                accept="audio/*" 
+                className="hidden" 
+                onChange={handleConnectUpload} 
+              />
               {hasCustomConnect && (
                 <>
                   <button
@@ -325,15 +418,19 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
               </p>
             </div>
             <div className="flex items-center gap-2 mt-1 sm:mt-0">
-              <label className="p-2 px-3 bg-[#00FF88]/15 hover:bg-[#00FF88]/25 border border-[#00FF88]/20 text-[#00FF88] text-[10px] font-extrabold uppercase rounded-xl cursor-pointer transition-all active:scale-95 text-center shrink-0">
+              <button 
+                onClick={handleFullReplaceClick}
+                className="p-2 px-3 bg-[#00FF88]/15 hover:bg-[#00FF88]/25 border border-[#00FF88]/20 text-[#00FF88] text-[10px] font-extrabold uppercase rounded-xl cursor-pointer transition-all active:scale-95 text-center shrink-0"
+              >
                 Replace MP3
-                <input 
-                  type="file" 
-                  accept="audio/*" 
-                  className="hidden" 
-                  onChange={handleFullUpload} 
-                />
-              </label>
+              </button>
+              <input 
+                ref={fullInputRef}
+                type="file" 
+                accept="audio/*" 
+                className="hidden" 
+                onChange={handleFullUpload} 
+              />
               {hasCustomFull && (
                 <>
                   <button
@@ -434,11 +531,6 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
             );
           })}
         </div>
-      </div>
-
-      {/* Native Ad 2 */}
-      <div className="my-2">
-        <GoogleNativeAppAd />
       </div>
 
       {/* Explanatory footer block */}

@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronLeft, Zap, Shield, Sparkles, RefreshCw, Smartphone, Clock, Bell, CheckCircle } from 'lucide-react';
 import { Screen, AlarmConfig } from '../../types';
-import { GoogleNativeAppAd } from '../GoogleAdMob';
 
 interface StickyNotificationPreviewProps {
   battery: {
@@ -184,10 +183,7 @@ export function StickyNotificationPreview({
         )}
       </div>
 
-      {/* Native App Ad 1 */}
-      <div>
-        <GoogleNativeAppAd />
-      </div>
+
 
       {/* Layout Live Preview Frame */}
       <div className="space-y-3.5">

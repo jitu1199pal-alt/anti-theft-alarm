@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Zap, Activity, ShieldCheck, Thermometer, ChevronLeft, Smartphone, Sliders, BatteryCharging, Info, Clock } from 'lucide-react';
-import { GoogleNativeAppAd } from '../GoogleAdMob';
+import { triggerInterstitialAd } from '../GoogleAdMob';
 
 interface ChargingSpeedTestProps {
   battery: {
@@ -89,10 +89,12 @@ export function ChargingSpeedTest({ battery, onBack }: ChargingSpeedTestProps) {
   }, [testing, battery.charging, battery.temperature, chargerWattage, battery.level]);
 
   const startTest = () => {
-    setProgress(0);
-    setTesting(true);
-    setTestStage('idle');
-    setSpeedData(null);
+    triggerInterstitialAd(() => {
+      setProgress(0);
+      setTesting(true);
+      setTestStage('idle');
+      setSpeedData(null);
+    }, 'battery');
   };
 
   // Accurate Physical Charging Estimation Equation:
@@ -227,10 +229,7 @@ export function ChargingSpeedTest({ battery, onBack }: ChargingSpeedTestProps) {
         </div>
       </div>
 
-      {/* Native Ad 1 */}
-      <div className="my-2">
-        <GoogleNativeAppAd />
-      </div>
+
 
       {/* Charging Time Countdown Predictor card */}
       <div className="bento-card p-6 bg-gradient-to-br from-indigo-950/40 via-slate-950 to-emerald-950/20 border border-white/5 relative overflow-hidden text-center">
@@ -394,11 +393,6 @@ export function ChargingSpeedTest({ battery, onBack }: ChargingSpeedTestProps) {
             </div>
           </div>
         )}
-      </div>
-
-      {/* Native Ad 2 */}
-      <div className="my-2">
-        <GoogleNativeAppAd />
       </div>
 
       {/* Fast Charging Education Box */}

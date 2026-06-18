@@ -74,7 +74,7 @@ import { translations } from './translations';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { GoogleAdMob, removeGlobalBanner, GoogleNativeAppAd } from './components/GoogleAdMob';
+import { GoogleAdMob, removeGlobalBanner, GoogleNativeAppAd, triggerInterstitialAd } from './components/GoogleAdMob';
 import { FeatureHub } from './components/features/FeatureHub';
 import { ChargingSpeedTest } from './components/features/ChargingSpeedTest';
 import { BatteryPredictor } from './components/features/BatteryPredictor';
@@ -653,7 +653,13 @@ export default function App() {
     };
 
     window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
+    (window as any).triggerPermissionsWizard = () => {
+      setShowPermissionsModal(true);
+    };
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      delete (window as any).triggerPermissionsWizard;
+    };
   }, []);
 
   // Preload AdMob interstitial whenever monitoring is active so it's ready of any alarm trigger
@@ -928,8 +934,11 @@ export default function App() {
             parsed.targetPercentage = 98;
           }
 
-          if (parsed.lowBatteryPercentage === undefined) parsed.lowBatteryPercentage = 20;
+           if (parsed.lowBatteryPercentage === undefined) parsed.lowBatteryPercentage = 20;
           if (parsed.targetPercentage === undefined) parsed.targetPercentage = 98;
+          if (parsed.connectVoiceSpeakEnabled === undefined) parsed.connectVoiceSpeakEnabled = false;
+          if (parsed.fullVoiceSpeakEnabled === undefined) parsed.fullVoiceSpeakEnabled = false;
+          parsed.voiceAlert = true;
           return parsed;
         }
       } catch (e) {
@@ -952,6 +961,8 @@ export default function App() {
       hasCustomizedTargetPercentage: false,
       boostReminderNotificationEnabled: true,
       boostReminderIntervalHours: 6,
+      connectVoiceSpeakEnabled: false,
+      fullVoiceSpeakEnabled: false,
     };
   });
 
@@ -1008,7 +1019,7 @@ export default function App() {
       if (mainAudioContext) {
         mainAudioContext.resume().catch(() => {});
       }
-      if (alarmConfig.connectVoiceSpeakEnabled !== false) {
+      if (alarmConfig.connectVoiceSpeakEnabled === true) {
         speakText(alarmConfig.connectVoiceSpeakText || "Thank you for charging me!");
       }
     }
@@ -1203,7 +1214,7 @@ export default function App() {
       if (screen !== Screen.LOCK) {
         setAlarmReason('full');
         setScreen(Screen.LOCK);
-        if (alarmConfig.fullVoiceSpeakEnabled !== false) {
+        if (alarmConfig.fullVoiceSpeakEnabled === true) {
           speakText(alarmConfig.fullVoiceSpeakText || "Sir, please unplug the charger, battery is full!");
         }
       }
@@ -1504,11 +1515,6 @@ export default function App() {
         "absolute inset-0 opacity-20 pointer-events-none transition-all duration-1000",
         battery.charging ? "bg-[radial-gradient(circle_at_50%_0%,#22c55e_0%,transparent_70%)]" : "bg-[radial-gradient(circle_at_50%_0%,#3b82f6_0%,transparent_70%)]"
       )} />
-      {screen !== Screen.SPLASH && screen !== Screen.LOCK && (
-        <div className="px-6 pt-4">
-          <GoogleNativeAppAd />
-        </div>
-      )}
       <AnimatePresence mode="wait">
         {renderScreen()}
       </AnimatePresence>
@@ -2475,6 +2481,11 @@ function HomeScreen({
         </div>
       </header>
 
+      {/* Anti-Theft Pocket Guard Pro PRO CRITICAL native ad shown at the top of the home page */}
+      <div className="w-full mb-6">
+        <GoogleNativeAppAd type="security" />
+      </div>
+
       {/* 🛡️ App Security Setup Card with Expand / Minimize Toggle or All Permissions Button */}
       <div className="w-full mb-6 bg-[#0c101d] border border-white/10 rounded-3xl p-5 flex flex-col gap-4 shadow-[0_15px_30px_rgba(0,0,0,0.4)]">
         <div className="flex flex-col md:flex-row md:items-center gap-3 justify-between">
@@ -2792,6 +2803,8 @@ function HomeScreen({
                   max="45"
                   value={config.lowBatteryPercentage}
                   onChange={(e) => setConfig({ ...config, lowBatteryPercentage: parseInt(e.target.value, 10), hasCustomizedLowBatteryPercentage: true })}
+                  onMouseUp={() => triggerInterstitialAd(() => {}, 'security')}
+                  onTouchEnd={() => triggerInterstitialAd(() => {}, 'security')}
                   className="flex-1 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-[#FF007F]"
                   style={{
                     background: `linear-gradient(to right, #FF007F 0%, #FF007F ${(config.lowBatteryPercentage - 10) / (45 - 10) * 100}%, #1e293b ${(config.lowBatteryPercentage - 10) / (45 - 10) * 100}%, #1e293b 100%)`
@@ -2818,6 +2831,8 @@ function HomeScreen({
                   max="100"
                   value={config.targetPercentage}
                   onChange={(e) => setConfig({ ...config, targetPercentage: parseInt(e.target.value, 10), hasCustomizedTargetPercentage: true })}
+                  onMouseUp={() => triggerInterstitialAd(() => {}, 'security')}
+                  onTouchEnd={() => triggerInterstitialAd(() => {}, 'security')}
                   className="flex-1 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-[#00FF88]"
                   style={{
                     background: `linear-gradient(to right, #00FF88 0%, #00FF88 ${(config.targetPercentage - 50) / (100 - 50) * 100}%, #1e293b ${(config.targetPercentage - 50) / (100 - 50) * 100}%, #1e293b 100%)`
@@ -2839,7 +2854,9 @@ function HomeScreen({
                   audioContext.resume();
                 }
 
-                setMonitoring(!isMonitoring);
+                triggerInterstitialAd(() => {
+                  setMonitoring(!isMonitoring);
+                }, 'security');
               }}
               className="flex-1 min-h-[82px] bg-black text-white rounded-[1.8rem] flex items-center justify-center gap-4 relative overflow-hidden group transition-all active:scale-[0.98]"
             >
@@ -2881,9 +2898,14 @@ function HomeScreen({
           </div>
         </div>
 
+        {/* Premium Native App Ad (Only on Home Page) */}
+        <div className="col-span-12 my-2">
+          <GoogleNativeAppAd type="battery" />
+        </div>
+
         {/* AdMob (Moved to Bottom) */}
         <div className="col-span-12 mt-4">
-          <GoogleAdMob slot={getAdUnitId('banner')} position="BOTTOM_CENTER" />
+          <GoogleAdMob slot={getAdUnitId('banner')} position="BOTTOM_CENTER" type="security" />
         </div>
       </div>
 
@@ -3281,7 +3303,14 @@ function AlarmSettings({ config, setConfig, onBack, t, theme, setTheme }: any) {
         </div>
 
         <SettingsRow icon={Repeat} label={t.continuousLoop} enabled={config.repeat} onToggle={() => setConfig({...config, repeat: !config.repeat})} />
-        <SettingsRow icon={Mic} label={t.voiceAlerts} enabled={config.voiceAlert} onToggle={() => setConfig({...config, voiceAlert: !config.voiceAlert})} />
+        <SettingsRow 
+          icon={Mic} 
+          label={`${t.voiceAlerts || 'Voice Alerts'} (Always Active / हमेशा चालू)`} 
+          enabled={true} 
+          onToggle={() => {
+            alert("Voice Alert features are forced to remain active at all times to guarantee anti-theft & charging voice feedback security!");
+          }} 
+        />
         <SettingsRow icon={Activity} label="Vibrate with Alarm / अलार्म के साथ कंपन (वाइब्रेशन)" enabled={config.vibrate} onToggle={() => setConfig({...config, vibrate: !config.vibrate})} />
 
         {/* Theme Settings Selector Block */}
@@ -3441,10 +3470,7 @@ function SecurityScreen({ onBack, t }: any) {
           </div>
         </div>
 
-        {/* Native Ad 1 */}
-        <div className="my-1">
-          <GoogleNativeAppAd />
-        </div>
+
 
         <div className="space-y-4">
           <div className="flex items-center justify-between p-4 bento-card border-accent/20">
@@ -3464,11 +3490,6 @@ function SecurityScreen({ onBack, t }: any) {
             <Lock size={16} />
             <span className="text-xs font-medium">{t.verificationBypassed}</span>
           </div>
-        </div>
-
-        {/* Native Ad 2 */}
-        <div className="my-1">
-          <GoogleNativeAppAd />
         </div>
 
         {/* Dynamic Privacy Card compliant with Google Play Policy */}
@@ -3605,11 +3626,6 @@ function HistoryScreen({ logs, setLogs, chargingCycles, onBack, t }: any) {
         </button>
       </div>
 
-      {/* Native Ad 1 */}
-      <div className="my-1">
-        <GoogleNativeAppAd />
-      </div>
-
       <div className="space-y-4">
         {logs.length === 0 ? (
           <div className="text-center p-12 bg-slate-900/10 border border-slate-800/40 rounded-3xl">
@@ -3645,11 +3661,6 @@ function HistoryScreen({ logs, setLogs, chargingCycles, onBack, t }: any) {
             );
           })
         )}
-      </div>
-
-      {/* Native Ad 2 */}
-      <div className="my-2">
-        <GoogleNativeAppAd />
       </div>
 
       <GoogleAdMob slot={getAdUnitId('banner')} position="BOTTOM_CENTER" />
@@ -3710,21 +3721,11 @@ function HealthScreen({ battery, batteryCapacity, chargingCycles, onBack, t }: a
         <p className="mt-4 text-[10px] text-slate-500 uppercase tracking-[0.3em] font-bold">{t.estimatedHealth}</p>
       </div>
 
-      {/* Native Ad 1 */}
-      <div className="my-1">
-        <GoogleNativeAppAd />
-      </div>
-
       <div className="grid grid-cols-2 gap-4">
         <StatusHealthItem label="Temp / तापमान" value={`${battery.temperature}°C`} sub={battery.temperature > 39 ? '🔥 Hot / गर्म' : '❄️ Cool / सामान्य'} />
         <StatusHealthItem label="Capacity / क्षमता" value={`${batteryCapacity} mAh`} sub={`Act: ${Math.round(battery.level * batteryCapacity)} mAh`} />
         <StatusHealthItem label="Cycles / चक्र" value={`${chargingCycles}`} sub="Total Plugs Count" />
         <StatusHealthItem label="Tech / तकनीक" value="Li-Polymer" sub="Smart Shield" />
-      </div>
-
-      {/* Native Ad 2 */}
-      <div className="my-1">
-        <GoogleNativeAppAd />
       </div>
 
       <div className="space-y-4">

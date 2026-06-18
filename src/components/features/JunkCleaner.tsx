@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Trash2, Shield, Zap, RefreshCw, X, ChevronLeft, CheckCircle, Database, Cpu, HardDrive } from 'lucide-react';
-import { GoogleNativeAppAd } from '../GoogleAdMob';
+import { triggerInterstitialAd, GoogleAdMob } from '../GoogleAdMob';
 
 interface JunkCleanerProps {
   onBack: () => void;
@@ -112,11 +112,6 @@ export function JunkCleaner({ onBack }: JunkCleanerProps) {
               ram: `${ramFreedNum} MB`
             });
 
-            // Automatically trigger the realistic Interstitial Ad overlay after completion!
-            setTimeout(() => {
-              setShowInterstitial(true);
-            }, 600);
-
             return 100;
           }
           const next = prev + 1.5;
@@ -137,10 +132,12 @@ export function JunkCleaner({ onBack }: JunkCleanerProps) {
   }, [cleaning, storageUsageMB, activeHeapMB]);
 
   const startCleaning = () => {
-    setProgress(0);
-    setCleaning(true);
-    setStage('scanning');
-    setFreedStats(null);
+    triggerInterstitialAd(() => {
+      setProgress(0);
+      setCleaning(true);
+      setStage('scanning');
+      setFreedStats(null);
+    }, 'cleaner');
   };
 
   return (
@@ -190,10 +187,7 @@ export function JunkCleaner({ onBack }: JunkCleanerProps) {
         </div>
       </div>
 
-      {/* Native Ad 1 */}
-      <div className="my-1">
-        <GoogleNativeAppAd />
-      </div>
+
 
       {/* Main Booster Dashboard */}
       <div className="bento-card p-6 flex flex-col items-center justify-center text-center relative overflow-hidden bg-slate-950/80 border border-white/5">
@@ -355,18 +349,15 @@ export function JunkCleaner({ onBack }: JunkCleanerProps) {
         )}
       </AnimatePresence>
 
-      {/* Native Ad 2 */}
-      <div className="my-2">
-        <GoogleNativeAppAd />
-      </div>
-
       {/* Safety Instructions */}
-      <div className="bento-card p-5 space-y-2.5 bg-slate-900/40 text-left">
+      <div className="bento-card p-5 space-y-2.5 bg-slate-900/40 text-left mb-4">
         <h4 className="text-xs font-black text-rose-400 uppercase tracking-wider">⚡ Why Boost RAM?</h4>
         <p className="text-[10.5px] text-slate-400 leading-relaxed font-sans">
           High memory usage runs processors continuously in the background, which produces battery heat. Maintaining optimized states drops physical charging temperatures by up to **3.5°C**.
         </p>
       </div>
+
+      <GoogleAdMob slot="ca-app-pub-2585981026340393/9149642997" type="cleaner" />
     </motion.div>
   );
 }

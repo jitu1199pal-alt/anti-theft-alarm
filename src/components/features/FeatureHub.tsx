@@ -3,7 +3,6 @@ import { motion } from 'motion/react';
 import { Zap, Play, Trash2, Speech, Smartphone, Bell, HelpCircle, Activity, ShieldCheck, Gamepad } from 'lucide-react';
 import { Screen, AlarmConfig } from '../../types';
 import { BatteryAvatar } from './BatteryAvatar';
-import { GoogleNativeAppAd } from '../GoogleAdMob';
 
 interface FeatureHubProps {
   battery: {
@@ -133,29 +132,13 @@ export function FeatureHub({ battery, alarmConfig, setAlarmConfig, setScreen, on
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {renderToolCard(tools[0])}
             {renderToolCard(tools[1])}
-          </div>
-
-          <div className="my-1">
-            <GoogleNativeAppAd />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {renderToolCard(tools[2])}
             {renderToolCard(tools[3])}
-          </div>
-
-          <div className="my-1">
-            <GoogleNativeAppAd />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {renderToolCard(tools[4])}
             {renderToolCard(tools[5])}
           </div>
 
-          <div className="my-1">
-            <GoogleNativeAppAd />
-          </div>
+
         </div>
       </div>
 

@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { triggerInterstitialAd, GoogleAdMob } from '../GoogleAdMob';
 import { 
   ChevronLeft, Check, Grid, Smartphone, RefreshCw, 
   Volume2, Flame, Headphones, Zap, Camera, Keyboard, 
   Sliders, Power, ShieldCheck, AlertTriangle, HelpCircle, Eye, RefreshCcw
 } from 'lucide-react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
-import { GoogleNativeAppAd } from '../GoogleAdMob';
 
 const AlarmService = registerPlugin<any>('AlarmService');
 
@@ -721,10 +721,7 @@ export function HardwareDiagnostics({ onBack }: HardwareDiagnosticsProps) {
             </div>
           </div>
 
-          {/* Native Ad 1 */}
-          <div className="my-1">
-            <GoogleNativeAppAd />
-          </div>
+
 
           {/* Interactive list of tests */}
           <div className="space-y-3">
@@ -742,7 +739,11 @@ export function HardwareDiagnostics({ onBack }: HardwareDiagnosticsProps) {
                   </div>
                 </div>
                 <button
-                  onClick={() => setActiveTest('screen')}
+                  onClick={() => {
+                    triggerInterstitialAd(() => {
+                      setActiveTest('screen');
+                    }, 'sensors');
+                  }}
                   className={`py-1.5 px-3 rounded-xl font-mono font-black text-[10px] uppercase transition-all ${
                     results.screen === 'pass' 
                       ? 'bg-emerald-500/10 text-[#00FF88] border border-emerald-500/20' 
@@ -763,7 +764,11 @@ export function HardwareDiagnostics({ onBack }: HardwareDiagnosticsProps) {
                   </div>
                 </div>
                 <button
-                  onClick={() => setActiveTest('speaker_loud')}
+                  onClick={() => {
+                    triggerInterstitialAd(() => {
+                      setActiveTest('speaker_loud');
+                    }, 'sensors');
+                  }}
                   className={`py-1.5 px-3 rounded-xl font-mono font-black text-[10px] uppercase transition-all ${
                     results.speaker_loud === 'pass' 
                       ? 'bg-emerald-500/10 text-[#00FF88] border border-emerald-500/20' 
@@ -889,7 +894,11 @@ export function HardwareDiagnostics({ onBack }: HardwareDiagnosticsProps) {
                   </div>
                 </div>
                 <button
-                  onClick={() => setActiveTest('keyboard_test')}
+                  onClick={() => {
+                    triggerInterstitialAd(() => {
+                      setActiveTest('keyboard_test');
+                    }, 'sensors');
+                  }}
                   className={`py-1.5 px-3 rounded-xl font-mono font-black text-[10px] uppercase transition-all ${
                     results.keyboard_test === 'pass' 
                       ? 'bg-emerald-500/10 text-[#00FF88] border border-emerald-500/20' 
@@ -943,11 +952,11 @@ export function HardwareDiagnostics({ onBack }: HardwareDiagnosticsProps) {
               </div>
 
             </div>
-          </div>
 
-          {/* Native Ad 2 */}
-          <div className="my-2">
-            <GoogleNativeAppAd />
+            <div className="mt-4 px-1">
+              <GoogleAdMob slot="ca-app-pub-2585981026340393/9149642997" type="sensors" />
+            </div>
+
           </div>
         </>
       )}

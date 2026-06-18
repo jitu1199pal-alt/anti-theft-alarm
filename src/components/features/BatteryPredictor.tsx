@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { ChevronLeft, HelpCircle, ArrowRight, Play, Gamepad, MessageSquare, PhoneCall, Music, CheckCircle2 } from 'lucide-react';
 import { BatteryState } from '../../types';
-import { GoogleNativeAppAd } from '../GoogleAdMob';
 
 interface BatteryPredictorProps {
   battery: BatteryState;
@@ -158,10 +157,7 @@ export function BatteryPredictor({ battery, onBack }: BatteryPredictorProps) {
         </div>
       </div>
 
-      {/* Native Ad 1 */}
-      <div className="my-2">
-        <GoogleNativeAppAd />
-      </div>
+
 
       {/* Daily Check-In Option Section */}
       <div className="bento-card p-5 border border-white/5 bg-slate-950/80 text-left flex flex-col gap-4">
@@ -194,11 +190,6 @@ export function BatteryPredictor({ battery, onBack }: BatteryPredictorProps) {
             📋 INSPECT CHEMISTRY / जाचें <ArrowRight size={14} />
           </button>
         )}
-      </div>
-
-      {/* Native Ad 2 */}
-      <div className="my-2">
-        <GoogleNativeAppAd />
       </div>
 
       {/* Usage breakdown estimation list */}
