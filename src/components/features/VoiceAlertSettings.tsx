@@ -137,7 +137,7 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
           console.log("Playing custom connection tone for preview");
           audio = new Audio(customConnect);
         } else {
-          audio = new Audio(`/audio/${presetId}_${type}.mp3`);
+          audio = new Audio(`audio/${presetId}_${type}.mp3`);
         }
       } else {
         const customFull = localStorage.getItem('custom_audio_full');
@@ -145,7 +145,7 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
           console.log("Playing custom full charged tone for preview");
           audio = new Audio(customFull);
         } else {
-          audio = new Audio(`/audio/${presetId}_${type}.mp3`);
+          audio = new Audio(`audio/${presetId}_${type}.mp3`);
         }
       }
 
@@ -203,7 +203,7 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
       {errorMsg && (
         <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex items-center justify-between text-left">
           <div className="flex-1 min-w-0 pr-2">
-            <span className="text-[9px] uppercase tracking-wider text-rose-400 font-extrabold block">TTS NOTICE / सूचना</span>
+            <span className="text-[9px] uppercase tracking-wider text-rose-400 font-extrabold block">SOUND NOTICE / ध्वनि सूचना</span>
             <p className="text-[11px] text-rose-200 mt-1 leading-normal font-medium">
               {errorMsg}
             </p>
@@ -443,7 +443,7 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
 
       {/* Explanatory footer block */}
       <div className="bento-card p-4 text-slate-500 text-[10px] leading-relaxed">
-        <strong>💡 Real Voice Alerts Enabled:</strong> This feature utilizes the native Web Speech engine. When active, plugging/unplugging cellular jacks will synthesize the text directly on your smartphone loud and clear: "Thank you for charging me!".
+        <strong>💡 Real Voice Alerts Enabled:</strong> This feature utilizes pre-installed, offline-ready high-quality MP3 voice assets designed to play seamlessly on your device. When active, plugging or unplugging the charger will welcome or alert you loud and clear.
       </div>
     </motion.div>
   );

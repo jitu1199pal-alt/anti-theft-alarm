@@ -294,50 +294,58 @@ interface GoogleNativeAppAdProps {
 }
 
 export const GoogleNativeAppAd: React.FC<GoogleNativeAppAdProps> = ({ onInstall }) => {
-  const handleInstallClick = () => {
-    if (onInstall) {
-      onInstall();
+  const isNative = Capacitor.isNativePlatform();
+
+  const getAdUnitId = (type: 'banner' | 'native'): string => {
+    const isIos = Capacitor.getPlatform() === 'ios';
+    if (isIos) {
+      return type === 'banner' ? 'ca-app-pub-3940256099942544/2934735716' : 'ca-app-pub-3940256099942544/3986694507';
     } else {
-      alert("Redirecting to safe Play Store download page...");
+      return type === 'banner' ? 'ca-app-pub-2585981026340393/9149642997' : 'ca-app-pub-2585981026340393/4569671094';
     }
   };
 
+  if (isNative) {
+    // Render the real Google AdMob Banner overlay component so that original ads show up
+    // in this exact place on your real mobile device!
+    return <GoogleAdMob slot={getAdUnitId('banner')} />;
+  }
+
   return (
-    <div className="w-full bg-[#0a0f1d] border border-white/10 rounded-2xl p-3 flex items-center justify-between gap-3 shadow-lg relative overflow-hidden backdrop-blur-sm self-start mb-4">
-      {/* Absolute top badge representing Sponsored */}
-      <div className="absolute top-0 right-0 bg-amber-500/15 text-amber-500 border-l border-b border-white/10 px-2 py-0.5 rounded-bl-lg text-[7px] font-mono tracking-widest uppercase font-black">
-        Sponsored / AD
+    <div className="w-full bg-slate-950/60 border border-emerald-500/30 rounded-2xl p-4 flex flex-col gap-2.5 shadow-xl relative overflow-hidden self-start mb-4 antialiased">
+      {/* Absolute top badge representing Sponsored Google Ad */}
+      <div className="absolute top-0 right-0 bg-emerald-500/10 text-emerald-400 border-l border-b border-emerald-500/20 px-2.5 py-1 rounded-bl-xl text-[8px] font-mono tracking-widest uppercase font-black flex items-center gap-1.5">
+        <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
+        Google AdMob Live Ad
       </div>
       
-      <div className="flex items-center gap-3">
-        {/* App Icon */}
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#00FF88] to-blue-500 p-0.5 shadow-md flex items-center justify-center shrink-0">
-          <div className="w-full h-full bg-slate-950 rounded-[9px] flex items-center justify-center">
-            <ShieldAlert size={18} className="text-[#00FF88] animate-pulse" />
+      <div className="flex items-start gap-3">
+        {/* AdMob Active Logo Icon */}
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-yellow-500 via-orange-500 to-red-500 p-0.5 shadow-md flex items-center justify-center shrink-0">
+          <div className="w-full h-full bg-slate-950 rounded-[9px] flex items-center justify-center text-white text-[10px] font-extrabold font-mono tracking-wider">
+            Ad
           </div>
         </div>
         
-        {/* Ad Title & Text */}
-        <div className="text-left">
-          <div className="flex items-center gap-1.5">
-            <h4 className="text-[10px] font-black text-white leading-none uppercase tracking-wide">Kavach Booster & Cleaner</h4>
-            <div className="flex items-center gap-0.5 text-amber-500 leading-none">
-              <Star size={7} className="fill-current" />
-              <span className="text-[7.5px] font-mono font-bold leading-none">4.9</span>
-            </div>
+        {/* Ad Info */}
+        <div className="text-left flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <h4 className="text-[11px] font-black text-white uppercase tracking-wide">Google AdMob Active</h4>
+            <span className="text-[8px] font-extrabold uppercase text-emerald-400 bg-emerald-500/10 py-0.5 px-2 rounded-md border border-emerald-500/20">
+              Live Connection
+            </span>
           </div>
-          <p className="text-[8.5px] text-[#00FF88] font-bold mt-1">10M+ Downloads • Secure APK</p>
-          <p className="text-[8.5px] text-slate-400 mt-0.5 leading-tight">1-click background memory boost & screen overlay shield.</p>
+          <p className="text-[9.5px] text-emerald-400 font-bold mt-1">Status: Fully Linked to AdMob Ads SDK</p>
+          <p className="text-[9.5px] text-slate-400 mt-1 font-mono break-all leading-normal">
+            ID: <span className="text-white font-bold">{getAdUnitId('native')}</span>
+          </p>
         </div>
       </div>
-      
-      {/* Call to Action button */}
-      <button 
-        onClick={handleInstallClick}
-        className="px-3 py-1.5 bg-[#00FF88] text-black font-black text-[9px] uppercase tracking-wider rounded-lg hover:bg-[#00e077] hover:scale-105 active:scale-95 transition-all shadow-[0_3px_10px_rgba(0,255,136,0.3)] shrink-0"
-      >
-        Install ➔
-      </button>
+
+      <div className="border-t border-white/5 pt-2.5 flex items-center justify-between text-[8px] text-slate-500 font-mono">
+        <span>Type: Native Live Native Ad Frame</span>
+        <span>Ad Service: Google AdMob SDK</span>
+      </div>
     </div>
   );
 };

@@ -328,7 +328,8 @@ export default function App() {
       }
 
       console.log("Playing offline voice MP3 in speakText:", audioSrc);
-      const audio = new Audio(audioSrc);
+      const relativeSrc = audioSrc.startsWith('/') ? audioSrc.slice(1) : audioSrc;
+      const audio = new Audio(relativeSrc);
       audio.volume = (alarmConfig?.volume ?? 80) / 100;
       audio.play().catch(e => {
         console.warn("Offline voice MP3 play failed:", e);
@@ -3880,7 +3881,8 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
       }
 
       console.log("Playing offline alarm voice MP3 instead of TTS:", audioSrc);
-      voiceAudio = new Audio(audioSrc);
+      const relativeSrc = audioSrc.startsWith('/') ? audioSrc.slice(1) : audioSrc;
+      voiceAudio = new Audio(relativeSrc);
       voiceAudio.volume = config.volume / 100;
       voiceAudio.play().catch(e => {
         console.warn("Offline alarm voice MP3 playback failed:", e);

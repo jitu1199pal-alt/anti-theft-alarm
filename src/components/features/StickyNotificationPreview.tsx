@@ -30,9 +30,21 @@ export function StickyNotificationPreview({
   const [boosting, setBoosting] = useState(false);
   const [justSimulated, setJustSimulated] = useState(false);
 
-  // Default values check
-  const boostEnabled = config.boostReminderNotificationEnabled !== false;
-  const boostInterval = config.boostReminderIntervalHours || 6;
+  // Default values check (Locked to 6 Hours, always active as per User request)
+  const boostEnabled = true;
+  const boostInterval = 6;
+
+  // Automatically enforce these properties in the persistent configuration state
+  React.useEffect(() => {
+    if (config.boostReminderNotificationEnabled !== true || config.boostReminderIntervalHours !== 6 || config.stickyNotificationEnabled !== true) {
+      setConfig(prev => ({
+        ...prev,
+        boostReminderNotificationEnabled: true,
+        boostReminderIntervalHours: 6,
+        stickyNotificationEnabled: true
+      }));
+    }
+  }, [config.boostReminderNotificationEnabled, config.boostReminderIntervalHours, config.stickyNotificationEnabled, setConfig]);
 
   const handleBoostPhoneClick = () => {
     setBoosting(true);
@@ -57,23 +69,15 @@ export function StickyNotificationPreview({
   };
 
   const handleToggleSticky = () => {
-    const nextVal = !config.stickyNotificationEnabled;
-    if (nextVal && triggerInterstitial) {
-      triggerInterstitial(() => {
-        setConfig(prev => ({ ...prev, stickyNotificationEnabled: true }));
-      });
-    } else {
-      setConfig(prev => ({ ...prev, stickyNotificationEnabled: nextVal }));
-    }
+    // Locked / read-only as per user request
   };
 
   const handleToggleBoostReminder = () => {
-    const nextVal = !boostEnabled;
-    setConfig(prev => ({ ...prev, boostReminderNotificationEnabled: nextVal }));
+    // Locked / read-only as per user request
   };
 
   const handleSetInterval = (hours: number) => {
-    setConfig(prev => ({ ...prev, boostReminderIntervalHours: hours }));
+    // Locked / read-only as per user request
   };
 
   const triggerSimulation = () => {
@@ -116,12 +120,11 @@ export function StickyNotificationPreview({
               Keeps a general real-time status bar option enabled for fast shortcuts and monitoring.
             </p>
           </div>
-          <button
-            onClick={handleToggleSticky}
-            className={`w-12 h-6 rounded-full transition-all relative shrink-0 cursor-pointer ${config.stickyNotificationEnabled ? 'bg-[#00FF88]' : 'bg-slate-800'}`}
-          >
-            <div className={`w-5 h-5 bg-black rounded-full absolute top-0.5 transition-all ${config.stickyNotificationEnabled ? 'left-6' : 'left-1'}`} />
-          </button>
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] font-extrabold uppercase text-[#00FF88] bg-[#00FF88]/10 py-1 px-2 rounded-lg border border-[#00FF88]/20 shrink-0">
+              ALWAYS ON / हमेशा चालू है
+            </span>
+          </div>
         </div>
       </div>
 
@@ -137,28 +140,22 @@ export function StickyNotificationPreview({
               Triggers a system drawer notification every 6 hours to prompt booster action. Clicking it displays an AdMob sponsor ad and opens the cleaner utility.
             </p>
           </div>
-          <button
-            onClick={handleToggleBoostReminder}
-            className={`w-12 h-6 rounded-full transition-all relative shrink-0 cursor-pointer ${boostEnabled ? 'bg-pink-500' : 'bg-slate-800'}`}
-          >
-            <div className={`w-5 h-5 bg-black rounded-full absolute top-0.5 transition-all ${boostEnabled ? 'left-6' : 'left-1'}`} />
-          </button>
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] font-extrabold uppercase text-pink-500 bg-pink-500/10 py-1 px-2 rounded-lg border border-pink-500/20 shrink-0">
+              ALWAYS ON / हमेशा चालू है
+            </span>
+          </div>
         </div>
 
         {boostEnabled && (
           <div className="pt-3 border-t border-white/5 space-y-4 animate-fade-in text-[11px]">
             <div>
               <span className="text-slate-500 font-bold uppercase text-[9px] tracking-wider block mb-1.5">Reminder Trigger Interval / समयान्तराल</span>
-              <div className="grid grid-cols-3 gap-2 font-mono">
-                {[2, 6, 12].map(hours => (
-                  <button
-                    key={hours}
-                    onClick={() => handleSetInterval(hours)}
-                    className={`py-1.5 px-3 border rounded-xl text-center text-xs font-black transition-all cursor-pointer ${boostInterval === hours ? 'bg-pink-500/15 border-pink-500 text-pink-400' : 'bg-slate-900 border-white/5 text-slate-400 hover:text-white'}`}
-                  >
-                    {hours} Hours {hours === 6 && '(Recom.)'}
-                  </button>
-                ))}
+              <div className="grid grid-cols-1 font-mono">
+                <div className="py-2 px-4 border border-pink-500/30 rounded-xl text-center text-xs font-bold bg-pink-500/10 text-pink-400 flex items-center justify-between">
+                  <span>⏰ Fixed Interval</span>
+                  <span className="font-extrabold uppercase text-[10px] tracking-wider">6 Hours Only (Locked)</span>
+                </div>
               </div>
             </div>
 
