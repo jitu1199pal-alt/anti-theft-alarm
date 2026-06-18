@@ -59,6 +59,9 @@ export interface AlarmConfig {
   stickyNotificationStyle?: 'compact' | 'detailed';
   hasCustomizedLowBatteryPercentage?: boolean;
   hasCustomizedTargetPercentage?: boolean;
+  boostReminderNotificationEnabled?: boolean;
+  boostReminderIntervalHours?: number;
+  lastBoostReminderDismissedTime?: number;
 }
 
 export interface SecurityConfig {

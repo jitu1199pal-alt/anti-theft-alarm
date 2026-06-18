@@ -15,6 +15,40 @@ export function BatteryAvatar({ level, charging, temperature, onBoost }: Battery
   const [likes, setLikes] = useState<number>(0);
   const [showHeart, setShowHeart] = useState(false);
 
+  const [hasCustomBoost, setHasCustomBoost] = useState<boolean>(() => {
+    try {
+      return !!localStorage.getItem('custom_audio_boost');
+    } catch {
+      return false;
+    }
+  });
+
+  const handleBoostUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      alert("Please select an MP3 file smaller than 2MB!");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      if (base64) {
+        localStorage.setItem('custom_audio_boost', base64);
+        setHasCustomBoost(true);
+        const audio = new Audio(base64);
+        audio.play().catch(err => console.log("Failed to play template sound:", err));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleResetBoost = () => {
+    localStorage.removeItem('custom_audio_boost');
+    setHasCustomBoost(false);
+  };
+
   // Determine battery mood
   let mood: 'happy' | 'energetic' | 'resting' | 'sick' | 'sad' = 'happy';
   let color = 'text-emerald-400';
@@ -129,7 +163,7 @@ export function BatteryAvatar({ level, charging, temperature, onBoost }: Battery
         </p>
       </div>
 
-      <div className="mt-4 w-full max-w-[280px]">
+      <div className="mt-4 w-full max-w-[280px] space-y-2">
         <button
           onClick={() => {
             handleInteract();
@@ -139,6 +173,32 @@ export function BatteryAvatar({ level, charging, temperature, onBoost }: Battery
         >
           🚀 Feed Boost / बूस्ट
         </button>
+
+        {/* Custom Audio Customizer Widget */}
+        <div className="flex items-center justify-between px-3 py-1.5 bg-white/5 border border-white/5 rounded-xl text-[9px] text-left">
+          <span className="text-slate-400 truncate max-w-[150px] font-mono leading-none">
+            {hasCustomBoost ? "🎵 Custom Audio Active" : "🔊 Default Text-to-Speech"}
+          </span>
+          <div className="flex items-center gap-2">
+            <label className="cursor-pointer text-emerald-400 font-extrabold uppercase hover:text-emerald-300 transition-colors">
+              REPLACE MP3
+              <input 
+                type="file" 
+                accept="audio/*" 
+                className="hidden" 
+                onChange={handleBoostUpload} 
+              />
+            </label>
+            {hasCustomBoost && (
+              <button 
+                onClick={handleResetBoost}
+                className="text-rose-400 font-black uppercase hover:text-rose-300 transition-colors cursor-pointer"
+              >
+                RESET
+              </button>
+            )}
+          </div>
+        </div>
       </div>
       
       <div className="flex gap-2.5 items-center justify-center mt-3 text-[9px] font-bold text-slate-500 uppercase tracking-wider">

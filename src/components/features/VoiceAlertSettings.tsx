@@ -14,6 +14,80 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const [hasCustomConnect, setHasCustomConnect] = useState<boolean>(() => {
+    try {
+      return !!localStorage.getItem('custom_audio_connect');
+    } catch {
+      return false;
+    }
+  });
+
+  const [hasCustomFull, setHasCustomFull] = useState<boolean>(() => {
+    try {
+      return !!localStorage.getItem('custom_audio_full');
+    } catch {
+      return false;
+    }
+  });
+
+  const handleConnectUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      setErrorMsg("Please select an MP3 file smaller than 2MB to save browser storage space.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      if (base64) {
+        localStorage.setItem('custom_audio_connect', base64);
+        setHasCustomConnect(true);
+        setErrorMsg(null);
+        // Play preview
+        const audio = new Audio(base64);
+        audio.volume = config.volume / 100;
+        audio.play().catch(err => console.log("Failed to play custom sound:", err));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleResetConnect = () => {
+    localStorage.removeItem('custom_audio_connect');
+    setHasCustomConnect(false);
+  };
+
+  const handleFullUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      setErrorMsg("Please select an MP3 file smaller than 2MB to save browser storage space.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      if (base64) {
+        localStorage.setItem('custom_audio_full', base64);
+        setHasCustomFull(true);
+        setErrorMsg(null);
+        // Play preview
+        const audio = new Audio(base64);
+        audio.volume = config.volume / 100;
+        audio.play().catch(err => console.log("Failed to play custom sound:", err));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleResetFull = () => {
+    localStorage.removeItem('custom_audio_full');
+    setHasCustomFull(false);
+  };
+
   const presets = [
     {
       id: 'professional',
@@ -53,48 +127,56 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
     }));
   };
 
-  const handleSpeechSpeak = (text: string, type: 'connect' | 'full') => {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window) || !window.speechSynthesis) {
-      setErrorMsg("Text-to-speech is not supported in this browser environment. Please install or enable a Text-to-Speech engine in your mobile settings.");
-      return;
-    }
-    
+  const handleSpeechSpeak = (text: string, type: 'connect' | 'full', presetId: string) => {
     try {
-      // Stop any ongoing speech
-      window.speechSynthesis.cancel();
+      let audio: HTMLAudioElement;
 
-      setPlayingVoice(`${type}_active`);
-      const utterance = new SpeechSynthesisUtterance(text);
-      
-      // Get english/hindi voices
-      const voices = window.speechSynthesis.getVoices();
-      
-      // Try to find natural voices
-      // If presets are Hindi comedy, find a Hindi vocal system if available
-      if (text.includes('bhai') || text.includes('khana')) {
-        utterance.voice = voices.find(v => v.lang.startsWith('hi') || v.lang.startsWith('in')) || null;
-        if (utterance.voice) utterance.lang = 'hi-IN';
+      if (type === 'connect') {
+        const customConnect = localStorage.getItem('custom_audio_connect');
+        if (customConnect) {
+          console.log("Playing custom connection tone for preview");
+          audio = new Audio(customConnect);
+        } else {
+          audio = new Audio(`/audio/${presetId}_${type}.mp3`);
+        }
       } else {
-        utterance.voice = voices.find(v => v.lang.startsWith('en')) || null;
-        utterance.lang = 'en-US';
+        const customFull = localStorage.getItem('custom_audio_full');
+        if (customFull) {
+          console.log("Playing custom full charged tone for preview");
+          audio = new Audio(customFull);
+        } else {
+          audio = new Audio(`/audio/${presetId}_${type}.mp3`);
+        }
       }
 
-      utterance.volume = config.volume / 100;
-      utterance.rate = 1.0;
-      utterance.pitch = type === 'connect' ? 1.0 : 1.1;
+      setPlayingVoice(`${type}_active`);
+      audio.volume = config.volume / 100;
 
-      utterance.onend = () => {
+      // Ensure we clear out any previously active preview sound instantly
+      if ((window as any)._activePreviewAudio) {
+        try {
+          (window as any)._activePreviewAudio.pause();
+        } catch (e) {}
+      }
+      (window as any)._activePreviewAudio = audio;
+
+      audio.onended = () => {
         setPlayingVoice(null);
       };
-      utterance.onerror = (err) => {
+      audio.onerror = (err) => {
+        console.warn("Offline voice MP3 playback failed:", err);
         setPlayingVoice(null);
-        console.warn("Speech synthesis trigger warning:", err);
+        setErrorMsg("Failed to play the requested preset sound file.");
       };
 
-      window.speechSynthesis.speak(utterance);
+      audio.play().catch(e => {
+        console.warn("Offline voice playable exception:", e);
+        setPlayingVoice(null);
+        setErrorMsg("Failed to play preset sound. Check tab permissions or volume.");
+      });
     } catch (e) {
       console.error(e);
-      setErrorMsg("Failed to play Speech. Your device engine raised an initialization error.");
+      setPlayingVoice(null);
     }
   };
 
@@ -181,6 +263,105 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
         <GoogleNativeAppAd />
       </div>
 
+      {/* 🔌 Replace Connection Tone with Custom MP3 */}
+      <div className="bento-card p-5 space-y-4 bg-slate-950 border border-white/5">
+        <div>
+          <span className="text-[9px] bg-[#00FF88]/15 text-[#00FF88] font-bold px-2 py-0.5 rounded border border-[#00FF88]/20">CUSTOM AUDIO UPLOADER</span>
+          <h3 className="text-xs font-black text-white uppercase tracking-wider mt-2">Replace Tones / मर्जी का MP3 लगाएं</h3>
+          <p className="text-[10px] text-slate-400">Replace the welcome plug-in tone and full charge alert tone with your own custom MP3s</p>
+        </div>
+
+        <div className="space-y-3 pt-1">
+          {/* Connection Tone Upload Row */}
+          <div className="p-3.5 bg-slate-900/60 border border-white/5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-left">
+            <div>
+              <span className="text-[8px] font-extrabold uppercase text-slate-500 block">🔌 Plug-In Connection Audio (MP3)</span>
+              <p className="text-[11px] text-white font-bold mt-0.5">
+                {hasCustomConnect ? "🎵 Custom MP3 Applied" : "🗣️ Standard Preset Voice Greeting"}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 mt-1 sm:mt-0">
+              <label className="p-2 px-3 bg-[#00FF88]/15 hover:bg-[#00FF88]/25 border border-[#00FF88]/20 text-[#00FF88] text-[10px] font-extrabold uppercase rounded-xl cursor-pointer transition-all active:scale-95 text-center shrink-0">
+                Replace MP3
+                <input 
+                  type="file" 
+                  accept="audio/*" 
+                  className="hidden" 
+                  onChange={handleConnectUpload} 
+                />
+              </label>
+              {hasCustomConnect && (
+                <>
+                  <button
+                    onClick={() => {
+                      const base64 = localStorage.getItem('custom_audio_connect');
+                      if (base64) {
+                        const audio = new Audio(base64);
+                        audio.volume = config.volume / 100;
+                        audio.play().catch(e => console.warn("Failed to play custom sound:", e));
+                      }
+                    }}
+                    className="p-2.5 bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-400 border border-indigo-500/20 rounded-xl cursor-pointer transition-colors"
+                  >
+                    <Play size={12} fill="currentColor" />
+                  </button>
+                  <button
+                    onClick={handleResetConnect}
+                    className="p-2 px-3 bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border border-rose-500/20 rounded-xl text-[10px] font-bold cursor-pointer transition-colors"
+                  >
+                    Reset
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Full Charged Tone Upload Row */}
+          <div className="p-3.5 bg-slate-900/60 border border-white/5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-left">
+            <div>
+              <span className="text-[8px] font-extrabold uppercase text-slate-500 block">🔋 Full Charged Alert Audio (MP3)</span>
+              <p className="text-[11px] text-white font-bold mt-0.5">
+                {hasCustomFull ? "🎵 Custom MP3 Applied" : "🗣️ Standard Preset Full Charge Alert"}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 mt-1 sm:mt-0">
+              <label className="p-2 px-3 bg-[#00FF88]/15 hover:bg-[#00FF88]/25 border border-[#00FF88]/20 text-[#00FF88] text-[10px] font-extrabold uppercase rounded-xl cursor-pointer transition-all active:scale-95 text-center shrink-0">
+                Replace MP3
+                <input 
+                  type="file" 
+                  accept="audio/*" 
+                  className="hidden" 
+                  onChange={handleFullUpload} 
+                />
+              </label>
+              {hasCustomFull && (
+                <>
+                  <button
+                    onClick={() => {
+                      const base64 = localStorage.getItem('custom_audio_full');
+                      if (base64) {
+                        const audio = new Audio(base64);
+                        audio.volume = config.volume / 100;
+                        audio.play().catch(e => console.warn("Failed to play custom sound:", e));
+                      }
+                    }}
+                    className="p-2.5 bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-400 border border-indigo-500/20 rounded-xl cursor-pointer transition-colors"
+                  >
+                    <Play size={12} fill="currentColor" />
+                  </button>
+                  <button
+                    onClick={handleResetFull}
+                    className="p-2 px-3 bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border border-rose-500/20 rounded-xl text-[10px] font-bold cursor-pointer transition-colors"
+                  >
+                    Reset
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Preset Custom Voice alert lists */}
       <div className="space-y-4">
         <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 leading-none">Select Voice Presets / आवाज चुनें</h3>
@@ -216,7 +397,7 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleSpeechSpeak(p.connect, 'connect');
+                        handleSpeechSpeak(p.connect, 'connect', p.id);
                       }}
                       className="p-2.5 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-lg hover:bg-indigo-500/20 active:scale-95 transition-all text-center shrink-0"
                     >
@@ -237,7 +418,7 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleSpeechSpeak(p.full, 'full');
+                        handleSpeechSpeak(p.full, 'full', p.id);
                       }}
                       className="p-2.5 bg-[#00FF88]/10 border border-[#00FF88]/20 text-[#00FF88] rounded-lg hover:bg-[#00FF88]/20 active:scale-95 transition-all text-center shrink-0"
                     >

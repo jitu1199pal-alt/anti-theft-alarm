@@ -88,19 +88,20 @@ import { StickyNotificationPreview } from './components/features/StickyNotificat
 // =====================================================================
 // CREATEGUARD: Replace these with your actual live AdMob Ad Unit IDs from AdMob Console!
 export const AD_CONFIG = {
-  // Official Google AdMob Test IDs
   android: {
-    banner: 'ca-app-pub-3940256099942544/6300978111',       // Official Android Test Banner ID
-    interstitial: 'ca-app-pub-3940256099942544/1033173712', // Official Android Test Interstitial ID
+    banner: 'ca-app-pub-2585981026340393/9149642997',       // Live Android Banner ID
+    interstitial: 'ca-app-pub-2585981026340393/3532685935', // Live Android Interstitial ID
+    native: 'ca-app-pub-2585981026340393/4569671094',       // Live Android Native Ad ID
   },
   ios: {
     banner: 'ca-app-pub-3940256099942544/2934735716',       // Official iOS Test Banner ID
     interstitial: 'ca-app-pub-3940256099942544/4411468910', // Official iOS Test Interstitial ID
+    native: 'ca-app-pub-3940256099942544/3986694507',       // Official iOS Test Native Ad ID
   }
 };
 
 // Helper function to resolve dynamic Ad Unit ID based on platform
-export function getAdUnitId(type: 'banner' | 'interstitial'): string {
+export function getAdUnitId(type: 'banner' | 'interstitial' | 'native'): string {
   const isIos = Capacitor.getPlatform() === 'ios';
   return isIos ? AD_CONFIG.ios[type] : AD_CONFIG.android[type];
 }
@@ -206,6 +207,7 @@ export async function preloadAdMobInterstitial() {
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>(Screen.SPLASH);
+  const [show6HourReminder, setShow6HourReminder] = useState(false);
   const [theme, setTheme] = useState<Theme>(() => {
     return (localStorage.getItem('applet_theme') as Theme) || 'dark';
   });
@@ -221,31 +223,118 @@ export default function App() {
   const [mainAudioContext, setMainAudioContext] = useState<AudioContext | null>(null);
   
   const speakText = (text: string) => {
-    if ('speechSynthesis' in window) {
-      try {
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        const voices = window.speechSynthesis.getVoices();
-        
-        if (text.includes('bhai') || text.includes('khana')) {
-          const hiVoice = voices.find(v => v.lang.startsWith('hi') || v.lang.startsWith('in'));
-          if (hiVoice) {
-            utterance.voice = hiVoice;
-            utterance.lang = 'hi-IN';
-          }
-        } else {
-          const enVoice = voices.find(v => v.lang.startsWith('en'));
-          if (enVoice) {
-            utterance.voice = enVoice;
-            utterance.lang = 'en-US';
-          }
+    try {
+      const cleanText = text.trim();
+      const tLower = text.toLowerCase();
+      const isHindi = tLower.includes('bhai') || tLower.includes('khana') || tLower.includes('धन्यवाद') || tLower.includes('कृपया') || tLower.includes('सफलता') || tLower.includes('हटा') || tLower.includes('लक्ष्य') || tLower.includes('इमरजेंसी') || tLower.includes('सिस्टम');
+
+      // Check for Custom Uploaded Audio first
+      const isConnectionTone = 
+        cleanText === 'Thank you for charging me!' || 
+        cleanText === 'Aha! Pet khali tha, khana mil gaya. Thank you!' ||
+        cleanText === 'Tachyon power couplings locked. Rejuvenating backup cells.' ||
+        cleanText === "Yay! Thank you for giving me energy! Let's do our best!" ||
+        tLower.includes('thank') || 
+        tLower.includes('charging me') ||
+        tLower.includes('pet khali') ||
+        tLower.includes('khana mil gaya') ||
+        tLower.includes('coupling') ||
+        tLower.includes('giving me energy') ||
+        tLower.includes('our best');
+
+      const isFullChargedTone =
+        cleanText === 'Sir, please unplug the charger, battery is full!' ||
+        cleanText === 'Arre bhai! Phone bol raha hu, full charge ho gaya, ab to nikaalo charger!' ||
+        cleanText === 'Warning: Quantum core fully saturated. Sever external links immediately.' ||
+        cleanText === 'Onii-chan! Battery is super full! Plis unplug me now!' ||
+        tLower.includes('unplug') || 
+        tLower.includes('unplug the charger') || 
+        tLower.includes('battery is full') ||
+        tLower.includes('phone bol raha hu') ||
+        tLower.includes('super full') ||
+        tLower.includes('quantum core') ||
+        tLower.includes('onii-chan') ||
+        tLower.includes('unplug me now');
+
+      if (isConnectionTone) {
+        const customConnect = localStorage.getItem('custom_audio_connect');
+        if (customConnect) {
+          console.log("Playing custom uploaded plug-in welcome audio");
+          const audio = new Audio(customConnect);
+          audio.volume = (alarmConfig?.volume ?? 80) / 100;
+          audio.play().catch(e => console.warn("Custom connect audio play failed:", e));
+          return;
         }
-        
-        utterance.volume = (alarmConfig?.volume ?? 80) / 100;
-        window.speechSynthesis.speak(utterance);
-      } catch (err) {
-        console.warn("SpeechSynthesis error:", err);
       }
+
+      if (isFullChargedTone) {
+        const customFull = localStorage.getItem('custom_audio_full');
+        if (customFull) {
+          console.log("Playing custom uploaded full charged audio");
+          const audio = new Audio(customFull);
+          audio.volume = (alarmConfig?.volume ?? 80) / 100;
+          audio.play().catch(e => console.warn("Custom full audio play failed:", e));
+          return;
+        }
+      }
+
+      if (tLower.includes('boost') || tLower.includes('मैमोरी') || tLower.includes('successfully boosted!')) {
+        const customBoost = localStorage.getItem('custom_audio_boost');
+        if (customBoost) {
+          console.log("Playing custom uploaded boost audio");
+          const audio = new Audio(customBoost);
+          audio.volume = (alarmConfig?.volume ?? 80) / 100;
+          audio.play().catch(e => console.warn("Custom boost audio play failed:", e));
+          return;
+        }
+      }
+
+      let audioSrc = '';
+
+      // Exact matching for presets
+      if (cleanText === 'Thank you for charging me!') {
+        audioSrc = '/audio/professional_connect.mp3';
+      } else if (cleanText === 'Sir, please unplug the charger, battery is full!') {
+        audioSrc = '/audio/professional_full.mp3';
+      } else if (cleanText === 'Aha! Pet khali tha, khana mil gaya. Thank you!') {
+        audioSrc = '/audio/hindi_comedy_connect.mp3';
+      } else if (cleanText === 'Arre bhai! Phone bol raha hu, full charge ho gaya, ab to nikaalo charger!') {
+        audioSrc = '/audio/hindi_comedy_full.mp3';
+      } else if (cleanText === 'Tachyon power couplings locked. Rejuvenating backup cells.') {
+        audioSrc = '/audio/cyber_bot_connect.mp3';
+      } else if (cleanText === 'Warning: Quantum core fully saturated. Sever external links immediately.') {
+        audioSrc = '/audio/cyber_bot_full.mp3';
+      } else if (cleanText === "Yay! Thank you for giving me energy! Let's do our best!") {
+        audioSrc = '/audio/anime_kawaii_connect.mp3';
+      } else if (cleanText === 'Onii-chan! Battery is super full! Plis unplug me now!') {
+        audioSrc = '/audio/anime_kawaii_full.mp3';
+      } else {
+        // Falling back to standard voice alert keywords
+        if (tLower.includes('thank') || tLower.includes('धन्यवाद') || tLower.includes('charging me')) {
+          audioSrc = isHindi ? '/audio/connect_voice_hi.mp3' : '/audio/connect_voice.mp3';
+        } else if (tLower.includes('unplug') || tLower.includes('full') || tLower.includes('हटा')) {
+          audioSrc = isHindi ? '/audio/full_voice_hi.mp3' : '/audio/full_voice.mp3';
+        } else if (tLower.includes('boost') || tLower.includes('मैमोरी') || tLower.includes('सफलता')) {
+          audioSrc = isHindi ? '/audio/booster_voice_hi.mp3' : '/audio/booster_voice.mp3';
+        } else if (tLower.includes('disconnected') || tLower.includes('हटा दिया')) {
+          audioSrc = isHindi ? '/audio/charger_disconnected_hi.mp3' : '/audio/charger_disconnected.mp3';
+        } else if (tLower.includes('achieved') || tLower.includes('लक्ष्य')) {
+          audioSrc = isHindi ? '/audio/charging_achieved_hi.mp3' : '/audio/charging_achieved.mp3';
+        } else if (tLower.includes('exhausted') || tLower.includes('इमरजेंसी')) {
+          audioSrc = isHindi ? '/audio/battery_exhausted_hi.mp3' : '/audio/battery_exhausted.mp3';
+        } else {
+          audioSrc = isHindi ? '/audio/system_alert_hi.mp3' : '/audio/system_alert.mp3';
+        }
+      }
+
+      console.log("Playing offline voice MP3 in speakText:", audioSrc);
+      const audio = new Audio(audioSrc);
+      audio.volume = (alarmConfig?.volume ?? 80) / 100;
+      audio.play().catch(e => {
+        console.warn("Offline voice MP3 play failed:", e);
+      });
+    } catch (err) {
+      console.warn("Offline play error:", err);
     }
   };
   const battery = useBattery();
@@ -273,6 +362,7 @@ export default function App() {
   useEffect(() => {
     latestAlarmReasonRef.current = alarmReason;
   }, [alarmReason]);
+  const justStoppedReasonRef = useRef<'theft' | 'full' | 'low' | 'test' | null>(null);
   const wakeLockRef = useRef<any>(null);
   const silentAudioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -365,6 +455,7 @@ export default function App() {
     lastChargingRef.current = isCharging;
   }, [battery.charging, battery.level, activeSession]);
 
+
   // Background Lock-Screen Compatibility & Permissions States
   const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [permissionsActivePage, setPermissionsActivePage] = useState(1);
@@ -453,8 +544,12 @@ export default function App() {
             }));
           }
           if (state.isAlarming && state.alarmReason) {
-            setAlarmReason(state.alarmReason as any);
-            setScreen(Screen.LOCK);
+            if (justStoppedReasonRef.current === state.alarmReason) {
+              console.log("Ignoring native alarming state because we just stopped this exact alarm reason:", state.alarmReason);
+            } else {
+              setAlarmReason(state.alarmReason as any);
+              setScreen(Screen.LOCK);
+            }
           }
         } else {
           setIsMonitoring(false);
@@ -810,6 +905,8 @@ export default function App() {
         if (parsed && typeof parsed === 'object') {
           if (!parsed.batteryCapacity) parsed.batteryCapacity = 5000;
           if (parsed.vibrate === undefined) parsed.vibrate = true;
+          if (parsed.boostReminderNotificationEnabled === undefined) parsed.boostReminderNotificationEnabled = true;
+          if (parsed.boostReminderIntervalHours === undefined) parsed.boostReminderIntervalHours = 6;
 
           // Determine if the user has previously customized these percentages.
           // If the saved percentages match old/other default systems and no custom flag exists,
@@ -852,8 +949,41 @@ export default function App() {
       vibrate: true,
       hasCustomizedLowBatteryPercentage: false,
       hasCustomizedTargetPercentage: false,
+      boostReminderNotificationEnabled: true,
+      boostReminderIntervalHours: 6,
     };
   });
+
+  // Recurrent 6-hour Boost Optimizer notification drawer trigger logic
+  useEffect(() => {
+    const boostEnabled = alarmConfig.boostReminderNotificationEnabled !== false;
+    if (!boostEnabled) return;
+
+    const checkInterval = () => {
+      try {
+        const lastTimeSaved = localStorage.getItem('lastBoostReminderDismissedTime');
+        const intervalHours = alarmConfig.boostReminderIntervalHours || 6;
+        const intervalMs = intervalHours * 60 * 60 * 1000;
+        
+        if (!lastTimeSaved) {
+          // Set to current time to establish the countdown of 6 hours
+          localStorage.setItem('lastBoostReminderDismissedTime', String(Date.now()));
+          return;
+        }
+
+        const elapsed = Date.now() - parseInt(lastTimeSaved);
+        if (elapsed >= intervalMs) {
+          setShow6HourReminder(true);
+        }
+      } catch (err) {
+        console.error("Error checking boost reminder notification timer:", err);
+      }
+    };
+
+    checkInterval();
+    const intervalId = setInterval(checkInterval, 30000); // Check every 30 seconds
+    return () => clearInterval(intervalId);
+  }, [alarmConfig.boostReminderNotificationEnabled, alarmConfig.boostReminderIntervalHours]);
 
   const [securityConfig, setSecurityConfig] = useState<SecurityConfig>(() => {
     const saved = localStorage.getItem('securityConfig');
@@ -1044,10 +1174,10 @@ export default function App() {
     }
   }, [isInitialized, battery.level, alarmConfig.targetPercentage, alarmConfig.lowBatteryPercentage, initialLaunchChecksDone]);
 
-  // Reset low battery alerted status when battery is charged above lowBatteryPercentage (20%) or plugged in
+  // Reset low battery alerted status when battery is charged above lowBatteryPercentage + 5 or plugged in (with hysteresis to prevent fluctuation loops)
   useEffect(() => {
     const currentLevelPct = Math.round(battery.level * 100);
-    if (currentLevelPct > alarmConfig.lowBatteryPercentage || battery.charging) {
+    if (currentLevelPct >= (alarmConfig.lowBatteryPercentage + 5) || battery.charging) {
       setLowBatteryAlerted(false);
     }
   }, [battery.level, battery.charging, alarmConfig.lowBatteryPercentage]);
@@ -1061,8 +1191,8 @@ export default function App() {
 
     const currentLevelPct = Math.round(battery.level * 100);
 
-    // Reset alert state if we drop below target or stop charging
-    if (targetReachedAlerted && (currentLevelPct < alarmConfig.targetPercentage || !battery.charging)) {
+    // Reset alert state if we drop significantly below target (with 5% hysteresis) or stop charging
+    if (targetReachedAlerted && (currentLevelPct <= (alarmConfig.targetPercentage - 5) || !battery.charging)) {
       setTargetReachedAlerted(false);
     }
 
@@ -1164,6 +1294,13 @@ export default function App() {
       // Stop monitoring and stop native service immediately in all cases to prevent re-triggering loops
       setIsMonitoring(false);
       localStorage.setItem('isMonitoring', JSON.stringify(false));
+      localStorage.removeItem('pendingAdReason');
+
+      justStoppedReasonRef.current = currentReason;
+      setTimeout(() => {
+        justStoppedReasonRef.current = null;
+      }, 5000); // 5-second race-condition lock guard
+
       if (Capacitor.isNativePlatform()) {
         try {
           await AlarmService.stopService();
@@ -1236,7 +1373,17 @@ export default function App() {
       case Screen.DIAGNOSTICS:
         return <HardwareDiagnostics onBack={() => setScreen(Screen.FEATURES)} />;
       case Screen.NOTIFICATION_PREVIEW:
-        return <StickyNotificationPreview battery={battery} config={alarmConfig} setConfig={setAlarmConfig} onBack={() => setScreen(Screen.FEATURES)} triggerInterstitial={triggerAdMobInterstitial} />;
+        return (
+          <StickyNotificationPreview 
+            battery={battery} 
+            config={alarmConfig} 
+            setConfig={setAlarmConfig} 
+            onBack={() => setScreen(Screen.FEATURES)} 
+            triggerInterstitial={triggerAdMobInterstitial}
+            setScreen={setScreen}
+            onSimulateNotification={() => setShow6HourReminder(true)}
+          />
+        );
       default: return <HomeScreen battery={battery} config={alarmConfig} setConfig={setAlarmConfig} isMonitoring={isMonitoring} setMonitoring={setIsMonitoring} setScreen={setScreen} nativePermissions={nativePermissions} hasOtherPermissionsConfirmed={hasOtherPermissionsConfirmed} setHasOtherPermissionsConfirmed={setHasOtherPermissionsConfirmed} hasAutoStartConfirmed={hasAutoStartConfirmed} setHasAutoStartConfirmed={setHasAutoStartConfirmed} onTest={() => { setAlarmReason('test'); setScreen(Screen.LOCK); }} t={t} />;
   }
 };
@@ -1286,6 +1433,71 @@ export default function App() {
         theme === 'light' ? "theme-light bg-slate-50 text-slate-900" : (theme === 'neon' ? "theme-neon bg-[#040108] text-[#00FF88]" : "bg-black text-white"),
         screen !== Screen.SPLASH && screen !== Screen.LOCK ? "pt-20" : ""
       )}>
+      {/* 🔔 Simulated 6-Hourly Native-style Notification Drawer Panel */}
+      <AnimatePresence>
+        {show6HourReminder && (
+          <motion.div
+            initial={{ y: -120, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -120, opacity: 0 }}
+            transition={{ type: 'spring', damping: 20, stiffness: 200 }}
+            className="absolute top-4 inset-x-4 z-[9999] pointer-events-auto"
+          >
+            <div className="p-4 bg-slate-900/95 backdrop-blur-md border border-white/10 rounded-2xl flex flex-col gap-3 shadow-[0_15px_40px_rgba(0,0,0,0.6)]">
+              <div className="absolute inset-0 bg-gradient-to-r from-pink-500/10 to-transparent pointer-events-none rounded-2xl" />
+              
+              <div className="flex items-center justify-between relative z-10 w-full">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 bg-pink-500 text-black rounded-full flex items-center justify-center font-black text-xs font-mono shadow-md">
+                    {Math.round(battery.level * 100)}%
+                  </div>
+                  <div className="text-left">
+                    <span className="text-[8px] font-extrabold uppercase text-pink-500 tracking-wider">Notification Drawer Panel</span>
+                    <h4 className="text-xs font-bold text-white leading-none mt-0.5 flex items-center gap-1">
+                      ChargeGuard Pro Security
+                      <Shield size={10} className="text-pink-400" />
+                    </h4>
+                    <span className="text-[10px] text-rose-400 font-bold mt-1 block font-mono leading-none">
+                      Junk full <span className="text-slate-600">|</span> Cores: Status Active
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      triggerAdMobInterstitial(() => {
+                        setShow6HourReminder(false);
+                        localStorage.setItem('lastBoostReminderDismissedTime', String(Date.now()));
+                        setScreen(Screen.CLEANER);
+                      });
+                    }}
+                    className="py-1.5 px-3.5 bg-pink-500 hover:bg-pink-600 text-black font-extrabold text-[10px] uppercase tracking-wider rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer"
+                  >
+                    Boost Phone
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShow6HourReminder(false);
+                      localStorage.setItem('lastBoostReminderDismissedTime', String(Date.now()));
+                    }}
+                    className="p-1 px-2 border border-white/10 bg-white/5 text-slate-400 hover:text-white rounded-lg text-[9px] font-black uppercase cursor-pointer"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-white/15 flex justify-between items-center text-[8.5px] text-slate-500 font-extrabold uppercase tracking-widest leading-none relative z-10">
+                <span>Sticky Notification Panel</span>
+                <span className="font-mono text-[8px] text-pink-400/80">Recurrent reminder active</span>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Dynamic Background Gradient */}
       <div className={cn(
         "absolute inset-0 opacity-20 pointer-events-none transition-all duration-1000",
@@ -3404,7 +3616,7 @@ function HistoryScreen({ logs, setLogs, chargingCycles, onBack, t }: any) {
             <p className="text-[10px] text-slate-600 mt-2">Connect your charger to start automatic recording!</p>
           </div>
         ) : (
-          logs.map((log: any, i: number) => {
+          logs.slice(0, 4).map((log: any, i: number) => {
             const isFull = log.type === 'full';
             return (
               <div key={log.id || i} className="bento-card flex justify-between items-center bg-slate-900/30 border-slate-800/50">
@@ -3615,12 +3827,13 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
 
   useEffect(() => {
     if (reason === 'theft' || reason === 'low') {
+      const duration = reason === 'low' ? 3000 : 5000;
       const timer = setTimeout(() => {
-        console.log(`Automatically disarming ${reason} alarm after 5 seconds`);
+        console.log(`Automatically disarming ${reason} alarm after ${duration}ms`);
         if (onStopRef.current) {
           onStopRef.current(true, false, false);
         }
-      }, 5000);
+      }, duration);
       return () => clearTimeout(timer);
     }
   }, [reason]);
@@ -3650,16 +3863,28 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
     const isTheft = reason === 'theft' || reason === 'test';
     const isFull = reason === 'full';
     const isLow = reason === 'low';
+    let voiceAudio: HTMLAudioElement | null = null;
 
     // Voice Alert Announcement
-    if (config.voiceAlert && typeof window !== 'undefined' && window.speechSynthesis && 'SpeechSynthesisUtterance' in window) {
-      const text = isTheft ? t.chargerDisconnected : (isFull ? t.chargingAchieved : (isLow ? t.batteryExhausted : t.systemAlert));
-      
-      const msg = new window.SpeechSynthesisUtterance(text);
-      msg.rate = 0.9;
-      msg.pitch = 1.1;
-      msg.volume = config.volume / 100;
-      window.speechSynthesis.speak(msg);
+    if (config.voiceAlert) {
+      const isHindi = (t.chargerDisconnected && t.chargerDisconnected.includes('चार्जर')) || false;
+      let audioSrc = '';
+      if (isTheft) {
+        audioSrc = isHindi ? '/audio/charger_disconnected_hi.mp3' : '/audio/charger_disconnected.mp3';
+      } else if (isFull) {
+        audioSrc = isHindi ? '/audio/charging_achieved_hi.mp3' : '/audio/charging_achieved.mp3';
+      } else if (isLow) {
+        audioSrc = isHindi ? '/audio/battery_exhausted_hi.mp3' : '/audio/battery_exhausted.mp3';
+      } else {
+        audioSrc = isHindi ? '/audio/system_alert_hi.mp3' : '/audio/system_alert.mp3';
+      }
+
+      console.log("Playing offline alarm voice MP3 instead of TTS:", audioSrc);
+      voiceAudio = new Audio(audioSrc);
+      voiceAudio.volume = config.volume / 100;
+      voiceAudio.play().catch(e => {
+        console.warn("Offline alarm voice MP3 playback failed:", e);
+      });
     }
 
     // If custom sound is selected, use HTML5 Audio
@@ -3684,8 +3909,9 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
       }, 500);
 
       return () => {
-        if (typeof window !== 'undefined' && window.speechSynthesis) {
-          window.speechSynthesis.cancel();
+        if (voiceAudio) {
+          voiceAudio.pause();
+          voiceAudio.src = '';
         }
         audio.pause();
         audio.src = '';
@@ -3791,8 +4017,9 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
     return () => {
       window.removeEventListener('touchstart', unlockAudio);
       window.removeEventListener('click', unlockAudio);
-      if (typeof window !== 'undefined' && window.speechSynthesis) {
-        window.speechSynthesis.cancel();
+      if (voiceAudio) {
+        voiceAudio.pause();
+        voiceAudio.src = '';
       }
       clearInterval(soundInterval);
       clearInterval(flashInterval);
