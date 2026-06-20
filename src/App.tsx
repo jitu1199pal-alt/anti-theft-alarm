@@ -66,6 +66,13 @@ interface AlarmServicePluginType {
     targetPercentage: number;
     lowBatteryPercentage: number;
     vibrate: boolean;
+    voiceAlertMode?: boolean;
+    useHindi?: boolean;
+    sound?: string;
+    connectVoiceSpeakEnabled?: boolean;
+    fullVoiceSpeakEnabled?: boolean;
+    connectVoiceSpeakText?: string;
+    fullVoiceSpeakText?: string;
   }): Promise<{ success: boolean }>;
   setAudioRoute(options: { mode: 'earpiece' | 'speaker' | 'reset' }): Promise<{ success: boolean }>;
   startEarpieceTone(options: { frequency: number }): Promise<{ success: boolean }>;
@@ -218,6 +225,23 @@ export async function preloadAdMobInterstitial() {
   }
 }
 
+export function getPresetAudioSrc(text: string | undefined, isFull: boolean): string {
+  if (!text) return isFull ? '/audio/professional_full.mp3' : '/audio/professional_connect.mp3';
+  const tLower = text.toLowerCase();
+  
+  if (tLower.includes('onii') || tLower.includes('anime') || tLower.includes('kawaii') || tLower.includes('super full') || tLower.includes('energy') || tLower.includes('best')) {
+    return isFull ? '/audio/anime_kawaii_full.mp3' : '/audio/anime_kawaii_connect.mp3';
+  }
+  if (tLower.includes('bhai') || tLower.includes('khana') || tLower.includes('comedy') || tLower.includes('pet khali') || tLower.includes('nikaalo') || tLower.includes('bol raha hu') || tLower.includes('mil gaya')) {
+    return isFull ? '/audio/hindi_comedy_full.mp3' : '/audio/hindi_comedy_connect.mp3';
+  }
+  if (tLower.includes('quantum') || tLower.includes('tachyon') || tLower.includes('cyber') || tLower.includes('saturated') || tLower.includes('couplings') || tLower.includes('cells')) {
+    return isFull ? '/audio/cyber_bot_full.mp3' : '/audio/cyber_bot_connect.mp3';
+  }
+  
+  return isFull ? '/audio/professional_full.mp3' : '/audio/professional_connect.mp3';
+}
+
 export default function App() {
   const [screen, setScreen] = useState<Screen>(Screen.SPLASH);
   const [show6HourReminder, setShow6HourReminder] = useState(false);
@@ -326,23 +350,10 @@ export default function App() {
 
       let audioSrc = '';
 
-      // Exact matching for presets
-      if (cleanText === 'Thank you for charging me!') {
-        audioSrc = '/audio/professional_connect.mp3';
-      } else if (cleanText === 'Sir, please unplug the charger, battery is full!') {
-        audioSrc = '/audio/professional_full.mp3';
-      } else if (cleanText === 'Aha! Pet khali tha, khana mil gaya. Thank you!') {
-        audioSrc = '/audio/hindi_comedy_connect.mp3';
-      } else if (cleanText === 'Arre bhai! Phone bol raha hu, full charge ho gaya, ab to nikaalo charger!') {
-        audioSrc = '/audio/hindi_comedy_full.mp3';
-      } else if (cleanText === 'Tachyon power couplings locked. Rejuvenating backup cells.') {
-        audioSrc = '/audio/cyber_bot_connect.mp3';
-      } else if (cleanText === 'Warning: Quantum core fully saturated. Sever external links immediately.') {
-        audioSrc = '/audio/cyber_bot_full.mp3';
-      } else if (cleanText === "Yay! Thank you for giving me energy! Let's do our best!") {
-        audioSrc = '/audio/anime_kawaii_connect.mp3';
-      } else if (cleanText === 'Onii-chan! Battery is super full! Plis unplug me now!') {
-        audioSrc = '/audio/anime_kawaii_full.mp3';
+      if (isConnectionTone) {
+        audioSrc = getPresetAudioSrc(cleanText, false);
+      } else if (isFullChargedTone) {
+        audioSrc = getPresetAudioSrc(cleanText, true);
       } else {
         // Falling back to standard voice alert keywords
         if (tLower.includes('boost') || tLower.includes('मैमोरी') || tLower.includes('सफलता')) {
@@ -1159,7 +1170,14 @@ export default function App() {
         theftAlarm: securityConfig.theftAlarm,
         targetPercentage: alarmConfig.targetPercentage,
         lowBatteryPercentage: alarmConfig.lowBatteryPercentage,
-        vibrate: alarmConfig.vibrate
+        vibrate: alarmConfig.vibrate,
+        voiceAlertMode: alarmConfig.voiceAlert,
+        useHindi: alarmConfig.useHindiVoice,
+        sound: alarmConfig.sound,
+        connectVoiceSpeakEnabled: alarmConfig.connectVoiceSpeakEnabled,
+        fullVoiceSpeakEnabled: alarmConfig.fullVoiceSpeakEnabled,
+        connectVoiceSpeakText: alarmConfig.connectVoiceSpeakText,
+        fullVoiceSpeakText: alarmConfig.fullVoiceSpeakText
       }).catch(e => console.error("Failed to sync AlarmConfig to Native SharedPreferences:", e));
       AlarmService.savePersistedValue({ key: 'alarmConfig', value: JSON.stringify(alarmConfig) }).catch(() => {});
     }
@@ -3979,103 +3997,28 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
           console.warn("Custom alarm voice MP3 playback failed:", e);
         });
       } else {
-        // High-quality Female TTS Voice Synthesis loop with explicit phrases requested by the user!
-        if ('speechSynthesis' in window) {
-          console.log("Starting female voice TTS alarm loop using SpeechSynthesis");
-          let isSpeaking = true;
-          
-          let alertText = "";
-          if (isTheft) {
-            alertText = "Charger Disconnected! Please connect the charger!";
-          } else if (isLow) {
-            alertText = "Battery Exhausted! Please connect the charger!";
-          } else if (isFull) {
-            alertText = "Sir, please unplug the charger, battery is full!";
-          } else {
-            alertText = "System alert! Please pay attention.";
-          }
-
-          const speakLoop = () => {
-            if (!isSpeaking) return;
-            window.speechSynthesis.cancel();
-            
-            const utterance = new SpeechSynthesisUtterance(alertText);
-            utterance.volume = config.volume / 100;
-            utterance.rate = 0.90; // Extremely clear and patient pronunciation
-            utterance.pitch = 1.15; // Set higher pitch for a reliable, feminine voice
-            
-            // Look for high quality female voices (Google, Samantha, Zira, Cortana, etc.)
-            const voices = window.speechSynthesis.getVoices();
-            let femaleVoice = voices.find(v => 
-              v.lang.startsWith('en') && 
-              (v.name.toLowerCase().includes('female') || 
-               v.name.toLowerCase().includes('google') || 
-               v.name.toLowerCase().includes('zira') || 
-               v.name.toLowerCase().includes('samantha') ||
-               v.name.toLowerCase().includes('natural') ||
-               v.name.toLowerCase().includes('expressive'))
-            );
-            
-            if (!femaleVoice) {
-              femaleVoice = voices.find(v => v.lang.startsWith('en'));
-            }
-            
-            if (femaleVoice) {
-              utterance.voice = femaleVoice;
-            }
-            utterance.lang = 'en-US';
-            
-            utterance.onend = () => {
-              if (isSpeaking) {
-                // Wait 1.5 seconds between repeats to sound natural and clear
-                setTimeout(speakLoop, 1500);
-              }
-            };
-            
-            utterance.onerror = () => {
-              if (isSpeaking) {
-                setTimeout(speakLoop, 2000);
-              }
-            };
-            
-            window.speechSynthesis.speak(utterance);
-          };
-
-          // On Chrome/Android, getVoices() loads asynchronously. Ensure voices are loaded before speaking
-          if (window.speechSynthesis.getVoices().length === 0) {
-            window.speechSynthesis.onvoiceschanged = () => {
-              speakLoop();
-            };
-          } else {
-            speakLoop();
-          }
-
-          stopTTS = () => {
-            isSpeaking = false;
-            window.speechSynthesis.cancel();
-          };
+        // High-quality pre-recorded Voice Alerts!
+        let audioSrc = '';
+        if (isFull) {
+          audioSrc = getPresetAudioSrc(config.fullVoiceSpeakText, true);
+        } else if (isTheft) {
+          const isHindi = config.fullVoiceSpeakText?.toLowerCase().includes('bhai') || config.fullVoiceSpeakText?.toLowerCase().includes('khana') || config.fullVoiceSpeakText?.toLowerCase().includes('comedy') || config.fullVoiceSpeakText?.toLowerCase().includes('pet khali') || config.fullVoiceSpeakText?.toLowerCase().includes('nikaalo');
+          audioSrc = isHindi ? '/audio/charger_disconnected_hi.mp3' : '/audio/charger_disconnected.mp3';
+        } else if (isLow) {
+          const isHindi = config.fullVoiceSpeakText?.toLowerCase().includes('bhai') || config.fullVoiceSpeakText?.toLowerCase().includes('khana') || config.fullVoiceSpeakText?.toLowerCase().includes('comedy') || config.fullVoiceSpeakText?.toLowerCase().includes('pet khali') || config.fullVoiceSpeakText?.toLowerCase().includes('nikaalo');
+          audioSrc = isHindi ? '/audio/battery_exhausted_hi.mp3' : '/audio/battery_exhausted.mp3';
         } else {
-          // Speak fallback to standard local MP3 if speechSynthesis is totally absent
-          let audioSrc = '';
-          if (isTheft) {
-            audioSrc = '/audio/charger_disconnected.mp3';
-          } else if (isFull) {
-            audioSrc = '/audio/charging_achieved.mp3';
-          } else if (isLow) {
-            audioSrc = '/audio/battery_exhausted.mp3';
-          } else {
-            audioSrc = '/audio/system_alert.mp3';
-          }
-
-          console.log("SpeechSynthesis not available, playing offline MP3 as fallback:", audioSrc);
-          const relativeSrc = audioSrc.startsWith('/') ? audioSrc.slice(1) : audioSrc;
-          voiceAudio = new Audio(relativeSrc);
-          voiceAudio.volume = config.volume / 100;
-          voiceAudio.loop = true;
-          voiceAudio.play().catch(e => {
-            console.warn("Offline alarm voice MP3 fallback failed:", e);
-          });
+          audioSrc = '/audio/system_alert.mp3';
         }
+
+        console.log("Playing preset voice alert MP3 in AlarmOverlay:", audioSrc);
+        const relativeSrc = audioSrc.startsWith('/') ? audioSrc.slice(1) : audioSrc;
+        voiceAudio = new Audio(relativeSrc);
+        voiceAudio.volume = config.volume / 100;
+        voiceAudio.loop = true;
+        voiceAudio.play().catch(e => {
+          console.warn("Preset voice alert MP3 play failed:", e);
+        });
       }
     }
 
@@ -4341,22 +4284,7 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
           </motion.div>
         )}
 
-        {/* Premium Pulsing Disable Alarm Button - Render and support for low battery, full battery, anti-theft, and test alarms */}
-        {reason && reason !== 'low' && (
-          <div className="w-full flex justify-center">
-            <motion.button
-              whileTap={{ scale: 0.95 }}
-              whileHover={{ scale: 1.02 }}
-              onClick={() => {
-                setErrorMessage(null);
-                onStop(true); // Manual button disarms monitoring and triggers ads directly
-              }}
-              className="w-full max-w-[320px] py-4 px-8 rounded-2xl font-black text-sm uppercase tracking-wider text-center transition-all duration-300 shadow-xl border cursor-pointer bg-gradient-to-r from-emerald-500 to-teal-400 border-emerald-500/20 text-black shadow-emerald-500/10 hover:from-emerald-400 hover:to-teal-300 animate-pulse"
-            >
-              Disable Alarm / अलार्म बंद करें
-            </motion.button>
-          </div>
-        )}
+
 
         {reason && reason !== 'low' && (
           <div className="flex gap-4">

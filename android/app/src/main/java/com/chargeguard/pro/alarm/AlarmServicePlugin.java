@@ -216,6 +216,13 @@ public class AlarmServicePlugin extends Plugin {
         int targetPercentage = call.getInt("targetPercentage", 80);
         int lowBatteryPercentage = call.getInt("lowBatteryPercentage", 20);
         boolean vibrate = call.getBoolean("vibrate", true);
+        boolean voiceAlertMode = call.getBoolean("voiceAlertMode", true);
+        boolean useHindi = call.getBoolean("useHindi", false);
+        String sound = call.getString("sound", "Rapid Beep");
+        boolean connectVoiceSpeakEnabled = call.getBoolean("connectVoiceSpeakEnabled", true);
+        boolean fullVoiceSpeakEnabled = call.getBoolean("fullVoiceSpeakEnabled", true);
+        String connectVoiceSpeakText = call.getString("connectVoiceSpeakText", "Thank you for charging me!");
+        String fullVoiceSpeakText = call.getString("fullVoiceSpeakText", "Sir, please unplug the charger, battery is full!");
 
         try {
             android.content.SharedPreferences prefs = context.getSharedPreferences("ChargeGuardPrefs", Context.MODE_PRIVATE);
@@ -224,6 +231,13 @@ public class AlarmServicePlugin extends Plugin {
                  .putInt("targetPercentage", targetPercentage)
                  .putInt("lowBatteryPercentage", lowBatteryPercentage)
                  .putBoolean("vibrate", vibrate)
+                 .putBoolean("voiceAlertMode", voiceAlertMode)
+                 .putBoolean("useHindi", useHindi)
+                 .putString("sound", sound)
+                 .putBoolean("connectVoiceSpeakEnabled", connectVoiceSpeakEnabled)
+                 .putBoolean("fullVoiceSpeakEnabled", fullVoiceSpeakEnabled)
+                 .putString("connectVoiceSpeakText", connectVoiceSpeakText)
+                 .putString("fullVoiceSpeakText", fullVoiceSpeakText)
                  .apply();
 
             JSObject result = new JSObject();
