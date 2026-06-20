@@ -35,6 +35,7 @@ public class AlarmService extends Service {
 
     // Added Voice Alert parameters for offline lock screen operations helper
     private boolean voiceAlertMode = true;
+    private boolean useHindi = false;
     private String sound = "Rapid Beep";
     private boolean connectVoiceSpeakEnabled = true;
     private boolean fullVoiceSpeakEnabled = true;
@@ -85,6 +86,7 @@ public class AlarmService extends Service {
         lowBatteryPercentage = prefs.getInt("lowBatteryPercentage", 20);
         vibrateEnabled = prefs.getBoolean("vibrate", true);
         voiceAlertMode = prefs.getBoolean("voiceAlertMode", true);
+        useHindi = prefs.getBoolean("useHindi", false);
         sound = prefs.getString("sound", "Rapid Beep");
         connectVoiceSpeakEnabled = prefs.getBoolean("connectVoiceSpeakEnabled", true);
         fullVoiceSpeakEnabled = prefs.getBoolean("fullVoiceSpeakEnabled", true);
@@ -138,6 +140,9 @@ public class AlarmService extends Service {
             if (intent.hasExtra("voiceAlertMode")) {
                 voiceAlertMode = intent.getBooleanExtra("voiceAlertMode", voiceAlertMode);
             }
+            if (intent.hasExtra("useHindi")) {
+                useHindi = intent.getBooleanExtra("useHindi", useHindi);
+            }
             if (intent.hasExtra("sound")) {
                 sound = intent.getStringExtra("sound");
             }
@@ -170,6 +175,7 @@ public class AlarmService extends Service {
                  .putInt("lowBatteryPercentage", lowBatteryPercentage)
                  .putBoolean("vibrate", vibrateEnabled)
                  .putBoolean("voiceAlertMode", voiceAlertMode)
+                 .putBoolean("useHindi", useHindi)
                  .putString("sound", sound)
                  .putBoolean("connectVoiceSpeakEnabled", connectVoiceSpeakEnabled)
                  .putBoolean("fullVoiceSpeakEnabled", fullVoiceSpeakEnabled)
@@ -274,6 +280,30 @@ public class AlarmService extends Service {
             isFirstCheck = false;
         }
 
+        // Active alarm auto-stop check because of power source transition states
+        if (isAlarmActive) {
+            if ("full".equals(alarmReason) && !isCharging) {
+                // Stopped target battery full alarm because charger was unplugged!
+                stopAlarmSound();
+                isAlarmActive = false;
+                alarmReason = null;
+                AlarmServicePlugin.setAlarmState(false, null);
+                targetReachedAlerted = false;
+                wasChargingOnStart = false;
+            } else if ("theft".equals(alarmReason) && isCharging) {
+                // Stopped anti-theft alarm because charger was plugged back in!
+                stopAlarmSound();
+                isAlarmActive = false;
+                alarmReason = null;
+                AlarmServicePlugin.setAlarmState(false, null);
+                hadChargerUnplugged = false;
+                wasChargingOnStart = true;
+            } else {
+                // Ignore general battery charge level changes while other alarms are actively ringing
+                return;
+            }
+        }
+
         // Handle alerts reset states based on charger status
         if (isCharging || Intent.ACTION_POWER_CONNECTED.equals(action)) {
             if (Intent.ACTION_POWER_CONNECTED.equals(action)) {
@@ -283,6 +313,7 @@ public class AlarmService extends Service {
             }
             wasChargingOnStart = true;
             lowBatteryAlerted = false; // Reset low battery alerted status when charging
+            hadChargerUnplugged = false; // Reset unplugged flag so we can trigger anti-theft again later!
         } else if (Intent.ACTION_POWER_DISCONNECTED.equals(action)) {
             targetReachedAlerted = false; // Reset target reached status when charger unplugged
         }
@@ -293,10 +324,6 @@ public class AlarmService extends Service {
         }
         if (percent < targetPercentage) {
             targetReachedAlerted = false; // Reset when battery drops back below target limit
-        }
-
-        if (isAlarmActive) {
-            return;
         }
 
         // 1. Theft Alarm (Charger disconnected)
@@ -356,7 +383,7 @@ public class AlarmService extends Service {
         launchMainActivity();
 
         if ("theft".equals(reason) || "low".equals(reason)) {
-            int playtimeMs = voiceAlertMode ? 5000 : 3000;
+            int playtimeMs = voiceAlertMode ? 10000 : 3000;
             new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(new Runnable() {
                 @Override
                 public void run() {
@@ -365,17 +392,9 @@ public class AlarmService extends Service {
                         isAlarmActive = false;
                         alarmReason = null;
                         AlarmServicePlugin.setAlarmState(false, null);
-                        
-                        try {
-                            SharedPreferences prefs = getSharedPreferences("ChargeGuardPrefs", Context.MODE_PRIVATE);
-                            prefs.edit().putBoolean("isMonitoringActive", false).apply();
-                            stopSelf();
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                        }
                     }
                 }
-            }, playtimeMs); // alarm playtime set to 5000ms for full voice alert playback or 3000ms for standard tune
+            }, playtimeMs); // alarm playtime set to 10000ms for full voice alert playback or 3000ms for standard tune
         }
     }
 
@@ -409,6 +428,17 @@ public class AlarmService extends Service {
             return isFull ? "public/audio/anime_kawaii_full.mp3" : "public/audio/anime_kawaii_connect.mp3";
         }
         return isFull ? "public/audio/professional_full.mp3" : "public/audio/professional_connect.mp3";
+    }
+
+    private boolean isHindiLanguage() {
+        if (useHindi) {
+            return true;
+        }
+        if (fullVoiceSpeakText != null) {
+            String text = fullVoiceSpeakText.toLowerCase();
+            return text.contains("bhai") || text.contains("khana") || text.contains("comedy") || text.contains("pet khali") || text.contains("कृपया") || text.contains("धन्यवाद");
+        }
+        return false;
     }
 
     private void playShortGreeting(String assetPath) {
@@ -464,9 +494,11 @@ public class AlarmService extends Service {
             boolean playedPath = false;
             if (voiceAlertMode) {
                 String assetPath = null;
-                if ("theft".equals(reason) || "low".equals(reason)) {
-                    // "Please connect charger" voice warning
-                    assetPath = "public/audio/battery_exhausted.mp3";
+                boolean isHindi = isHindiLanguage();
+                if ("theft".equals(reason)) {
+                    assetPath = isHindi ? "public/audio/charger_disconnected_hi.mp3" : "public/audio/charger_disconnected.mp3";
+                } else if ("low".equals(reason)) {
+                    assetPath = isHindi ? "public/audio/battery_exhausted_hi.mp3" : "public/audio/battery_exhausted.mp3";
                 } else if ("full".equals(reason)) {
                     if (fullVoiceSpeakEnabled) {
                         assetPath = getPresetAssetPath(fullVoiceSpeakText, true);
@@ -674,6 +706,7 @@ public class AlarmService extends Service {
                 restartServiceIntent.putExtra("lowBatteryPercentage", lowBatteryPercentage);
                 restartServiceIntent.putExtra("vibrate", vibrateEnabled);
                 restartServiceIntent.putExtra("voiceAlertMode", voiceAlertMode);
+                restartServiceIntent.putExtra("useHindi", useHindi);
                 restartServiceIntent.putExtra("sound", sound);
                 restartServiceIntent.putExtra("connectVoiceSpeakEnabled", connectVoiceSpeakEnabled);
                 restartServiceIntent.putExtra("fullVoiceSpeakEnabled", fullVoiceSpeakEnabled);
@@ -723,6 +756,7 @@ public class AlarmService extends Service {
             restartServiceIntent.putExtra("lowBatteryPercentage", lowBatteryPercentage);
             restartServiceIntent.putExtra("vibrate", vibrateEnabled);
             restartServiceIntent.putExtra("voiceAlertMode", voiceAlertMode);
+            restartServiceIntent.putExtra("useHindi", useHindi);
             restartServiceIntent.putExtra("sound", sound);
             restartServiceIntent.putExtra("connectVoiceSpeakEnabled", connectVoiceSpeakEnabled);
             restartServiceIntent.putExtra("fullVoiceSpeakEnabled", fullVoiceSpeakEnabled);

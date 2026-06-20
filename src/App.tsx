@@ -40,6 +40,7 @@ interface AlarmServicePluginType {
     lowBatteryPercentage: number;
     vibrate: boolean;
     voiceAlertMode?: boolean;
+    useHindi?: boolean;
     sound?: string;
     connectVoiceSpeakEnabled?: boolean;
     fullVoiceSpeakEnabled?: boolean;
@@ -114,6 +115,12 @@ export function getAdUnitId(type: 'banner' | 'interstitial' | 'native'): string 
 
 // Global helper to trigger AdMob Interstitial with a callback
 export async function triggerAdMobInterstitial(onDismiss: () => void) {
+  if (!navigator.onLine) {
+    console.log("AdMob Interstitial: Offline device context detected. Skipping ad sequence.");
+    onDismiss();
+    return;
+  }
+
   if (!Capacitor.isNativePlatform()) {
     console.log("AdMob Interstitial: Simulated run on web (Success callback triggered).");
     onDismiss();
@@ -291,6 +298,28 @@ export default function App() {
           const audio = new Audio(customBoost);
           audio.volume = (alarmConfig?.volume ?? 80) / 100;
           audio.play().catch(e => console.warn("Custom boost audio play failed:", e));
+          return;
+        }
+      }
+
+      if (tLower.includes('disconnected') || tLower.includes('हटा दिया')) {
+        const customTheft = localStorage.getItem('custom_audio_theft');
+        if (customTheft) {
+          console.log("Playing custom uploaded theft audio");
+          const audio = new Audio(customTheft);
+          audio.volume = (alarmConfig?.volume ?? 80) / 100;
+          audio.play().catch(e => console.warn("Custom theft audio play failed:", e));
+          return;
+        }
+      }
+
+      if (tLower.includes('exhausted') || tLower.includes('इमरजेंसी')) {
+        const customLow = localStorage.getItem('custom_audio_low');
+        if (customLow) {
+          console.log("Playing custom uploaded low battery audio");
+          const audio = new Audio(customLow);
+          audio.volume = (alarmConfig?.volume ?? 80) / 100;
+          audio.play().catch(e => console.warn("Custom low audio play failed:", e));
           return;
         }
       }
@@ -962,10 +991,11 @@ export default function App() {
             parsed.targetPercentage = 98;
           }
 
-           if (parsed.lowBatteryPercentage === undefined) parsed.lowBatteryPercentage = 20;
+            if (parsed.lowBatteryPercentage === undefined) parsed.lowBatteryPercentage = 20;
           if (parsed.targetPercentage === undefined) parsed.targetPercentage = 98;
-          if (parsed.connectVoiceSpeakEnabled === undefined) parsed.connectVoiceSpeakEnabled = false;
-          if (parsed.fullVoiceSpeakEnabled === undefined) parsed.fullVoiceSpeakEnabled = false;
+          if (parsed.connectVoiceSpeakEnabled === undefined) parsed.connectVoiceSpeakEnabled = true;
+          if (parsed.fullVoiceSpeakEnabled === undefined) parsed.fullVoiceSpeakEnabled = true;
+          if (parsed.useHindiVoice === undefined) parsed.useHindiVoice = localStorage.getItem('use_hindi') === 'true';
           parsed.voiceAlert = true;
           return parsed;
         }
@@ -989,8 +1019,9 @@ export default function App() {
       hasCustomizedTargetPercentage: false,
       boostReminderNotificationEnabled: true,
       boostReminderIntervalHours: 6,
-      connectVoiceSpeakEnabled: false,
-      fullVoiceSpeakEnabled: false,
+      connectVoiceSpeakEnabled: true,
+      fullVoiceSpeakEnabled: true,
+      useHindiVoice: localStorage.getItem('use_hindi') === 'true',
     };
   });
 
@@ -1084,6 +1115,7 @@ export default function App() {
               lowBatteryPercentage: alarmConfig.lowBatteryPercentage,
               vibrate: alarmConfig.vibrate,
               voiceAlertMode: alarmConfig.voiceAlert,
+              useHindi: alarmConfig.useHindiVoice,
               sound: alarmConfig.sound,
               connectVoiceSpeakEnabled: alarmConfig.connectVoiceSpeakEnabled,
               fullVoiceSpeakEnabled: alarmConfig.fullVoiceSpeakEnabled,
@@ -1099,7 +1131,7 @@ export default function App() {
       }
     };
     syncNativeService();
-  }, [isMonitoring, isInitialized, securityConfig.theftAlarm, alarmConfig.targetPercentage, alarmConfig.lowBatteryPercentage, alarmConfig.vibrate, alarmConfig.voiceAlert, alarmConfig.sound, alarmConfig.connectVoiceSpeakEnabled, alarmConfig.fullVoiceSpeakEnabled, alarmConfig.connectVoiceSpeakText, alarmConfig.fullVoiceSpeakText]);
+  }, [isMonitoring, isInitialized, securityConfig.theftAlarm, alarmConfig.targetPercentage, alarmConfig.lowBatteryPercentage, alarmConfig.vibrate, alarmConfig.voiceAlert, alarmConfig.useHindiVoice, alarmConfig.sound, alarmConfig.connectVoiceSpeakEnabled, alarmConfig.fullVoiceSpeakEnabled, alarmConfig.connectVoiceSpeakText, alarmConfig.fullVoiceSpeakText]);
 
   // Refresh Native Service if alarm is disarmed/dismissed but monitoring is kept active
   useEffect(() => {
@@ -1110,6 +1142,7 @@ export default function App() {
         lowBatteryPercentage: alarmConfig.lowBatteryPercentage,
         vibrate: alarmConfig.vibrate,
         voiceAlertMode: alarmConfig.voiceAlert,
+        useHindi: alarmConfig.useHindiVoice,
         sound: alarmConfig.sound,
         connectVoiceSpeakEnabled: alarmConfig.connectVoiceSpeakEnabled,
         fullVoiceSpeakEnabled: alarmConfig.fullVoiceSpeakEnabled,
@@ -1117,7 +1150,7 @@ export default function App() {
         fullVoiceSpeakText: alarmConfig.fullVoiceSpeakText
       }).catch(e => console.error("Failed to reset Native Service on disarm:", e));
     }
-  }, [alarmReason, isMonitoring, securityConfig.theftAlarm, alarmConfig.targetPercentage, alarmConfig.lowBatteryPercentage, alarmConfig.vibrate, alarmConfig.voiceAlert, alarmConfig.sound, alarmConfig.connectVoiceSpeakEnabled, alarmConfig.fullVoiceSpeakEnabled, alarmConfig.connectVoiceSpeakText, alarmConfig.fullVoiceSpeakText]);
+  }, [alarmReason, isMonitoring, securityConfig.theftAlarm, alarmConfig.targetPercentage, alarmConfig.lowBatteryPercentage, alarmConfig.vibrate, alarmConfig.voiceAlert, alarmConfig.useHindiVoice, alarmConfig.sound, alarmConfig.connectVoiceSpeakEnabled, alarmConfig.fullVoiceSpeakEnabled, alarmConfig.connectVoiceSpeakText, alarmConfig.fullVoiceSpeakText]);
 
   useEffect(() => {
     localStorage.setItem('alarmConfig', JSON.stringify(alarmConfig));
@@ -3874,7 +3907,7 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
 
   useEffect(() => {
     if (reason === 'theft' || reason === 'low') {
-      const duration = 3000; // exactly 3 seconds for both anti-theft and 20% low battery alarm
+      const duration = config.voiceAlert ? 10000 : 3000; // 3 seconds for Tune, 10 seconds for Voice Alert
       const timer = setTimeout(() => {
         console.log(`Automatically disarming ${reason} alarm after ${duration}ms`);
         if (onStopRef.current) {
@@ -3883,7 +3916,7 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
       }, duration);
       return () => clearTimeout(timer);
     }
-  }, [reason]);
+  }, [reason, config.voiceAlert]);
 
   useEffect(() => {
     // AUTO-STOP Logic
@@ -3924,29 +3957,126 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
     const isFull = reason === 'full';
     const isLow = reason === 'low';
     let voiceAudio: HTMLAudioElement | null = null;
+    let stopTTS: (() => void) | null = null;
 
     // Voice Alert Announcement
     if (config.voiceAlert) {
-      const isHindi = (t.chargerDisconnected && t.chargerDisconnected.includes('चार्जर')) || false;
-      let audioSrc = '';
+      let customAudio: string | null = null;
       if (isTheft) {
-        audioSrc = isHindi ? '/audio/charger_disconnected_hi.mp3' : '/audio/charger_disconnected.mp3';
-      } else if (isFull) {
-        audioSrc = isHindi ? '/audio/charging_achieved_hi.mp3' : '/audio/charging_achieved.mp3';
+        customAudio = localStorage.getItem('custom_audio_theft');
       } else if (isLow) {
-        audioSrc = isHindi ? '/audio/battery_exhausted_hi.mp3' : '/audio/battery_exhausted.mp3';
-      } else {
-        audioSrc = isHindi ? '/audio/system_alert_hi.mp3' : '/audio/system_alert.mp3';
+        customAudio = localStorage.getItem('custom_audio_low');
+      } else if (isFull) {
+        customAudio = localStorage.getItem('custom_audio_full');
       }
 
-      console.log("Playing offline alarm voice MP3 in loop:", audioSrc);
-      const relativeSrc = audioSrc.startsWith('/') ? audioSrc.slice(1) : audioSrc;
-      voiceAudio = new Audio(relativeSrc);
-      voiceAudio.volume = config.volume / 100;
-      voiceAudio.loop = true; // Loop the voice alert so it speaks fully and repeats continuously!
-      voiceAudio.play().catch(e => {
-        console.warn("Offline alarm voice MP3 playback failed:", e);
-      });
+      if (customAudio) {
+        console.log("Playing custom alarm audio loop:", customAudio);
+        voiceAudio = new Audio(customAudio);
+        voiceAudio.volume = config.volume / 100;
+        voiceAudio.loop = true; // Loop custom tone
+        voiceAudio.play().catch(e => {
+          console.warn("Custom alarm voice MP3 playback failed:", e);
+        });
+      } else {
+        // High-quality Female TTS Voice Synthesis loop with explicit phrases requested by the user!
+        if ('speechSynthesis' in window) {
+          console.log("Starting female voice TTS alarm loop using SpeechSynthesis");
+          let isSpeaking = true;
+          
+          let alertText = "";
+          if (isTheft) {
+            alertText = "Charger Disconnected! Please connect the charger!";
+          } else if (isLow) {
+            alertText = "Battery Exhausted! Please connect the charger!";
+          } else if (isFull) {
+            alertText = "Sir, please unplug the charger, battery is full!";
+          } else {
+            alertText = "System alert! Please pay attention.";
+          }
+
+          const speakLoop = () => {
+            if (!isSpeaking) return;
+            window.speechSynthesis.cancel();
+            
+            const utterance = new SpeechSynthesisUtterance(alertText);
+            utterance.volume = config.volume / 100;
+            utterance.rate = 0.90; // Extremely clear and patient pronunciation
+            utterance.pitch = 1.15; // Set higher pitch for a reliable, feminine voice
+            
+            // Look for high quality female voices (Google, Samantha, Zira, Cortana, etc.)
+            const voices = window.speechSynthesis.getVoices();
+            let femaleVoice = voices.find(v => 
+              v.lang.startsWith('en') && 
+              (v.name.toLowerCase().includes('female') || 
+               v.name.toLowerCase().includes('google') || 
+               v.name.toLowerCase().includes('zira') || 
+               v.name.toLowerCase().includes('samantha') ||
+               v.name.toLowerCase().includes('natural') ||
+               v.name.toLowerCase().includes('expressive'))
+            );
+            
+            if (!femaleVoice) {
+              femaleVoice = voices.find(v => v.lang.startsWith('en'));
+            }
+            
+            if (femaleVoice) {
+              utterance.voice = femaleVoice;
+            }
+            utterance.lang = 'en-US';
+            
+            utterance.onend = () => {
+              if (isSpeaking) {
+                // Wait 1.5 seconds between repeats to sound natural and clear
+                setTimeout(speakLoop, 1500);
+              }
+            };
+            
+            utterance.onerror = () => {
+              if (isSpeaking) {
+                setTimeout(speakLoop, 2000);
+              }
+            };
+            
+            window.speechSynthesis.speak(utterance);
+          };
+
+          // On Chrome/Android, getVoices() loads asynchronously. Ensure voices are loaded before speaking
+          if (window.speechSynthesis.getVoices().length === 0) {
+            window.speechSynthesis.onvoiceschanged = () => {
+              speakLoop();
+            };
+          } else {
+            speakLoop();
+          }
+
+          stopTTS = () => {
+            isSpeaking = false;
+            window.speechSynthesis.cancel();
+          };
+        } else {
+          // Speak fallback to standard local MP3 if speechSynthesis is totally absent
+          let audioSrc = '';
+          if (isTheft) {
+            audioSrc = '/audio/charger_disconnected.mp3';
+          } else if (isFull) {
+            audioSrc = '/audio/charging_achieved.mp3';
+          } else if (isLow) {
+            audioSrc = '/audio/battery_exhausted.mp3';
+          } else {
+            audioSrc = '/audio/system_alert.mp3';
+          }
+
+          console.log("SpeechSynthesis not available, playing offline MP3 as fallback:", audioSrc);
+          const relativeSrc = audioSrc.startsWith('/') ? audioSrc.slice(1) : audioSrc;
+          voiceAudio = new Audio(relativeSrc);
+          voiceAudio.volume = config.volume / 100;
+          voiceAudio.loop = true;
+          voiceAudio.play().catch(e => {
+            console.warn("Offline alarm voice MP3 fallback failed:", e);
+          });
+        }
+      }
     }
 
     // If custom sound is selected, use HTML5 Audio
@@ -4083,6 +4213,9 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
       if (voiceAudio) {
         voiceAudio.pause();
         voiceAudio.src = '';
+      }
+      if (stopTTS) {
+        stopTTS();
       }
       if (soundInterval) {
         clearInterval(soundInterval);

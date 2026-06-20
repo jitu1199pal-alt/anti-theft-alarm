@@ -13,6 +13,157 @@ interface VoiceAlertSettingsProps {
 export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSettingsProps) {
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [testingSound, setTestingSound] = useState<'theft' | 'low' | null>(null);
+  const [activeAdFor, setActiveAdFor] = useState<'connect' | 'full' | 'theft' | 'low' | null>(null);
+  const [adCountdown, setAdCountdown] = useState<number>(3);
+  const [installingMock, setInstallingMock] = useState<boolean>(false);
+
+  React.useEffect(() => {
+    if (activeAdFor === null) return;
+    setAdCountdown(3);
+    const interval = setInterval(() => {
+      setAdCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [activeAdFor]);
+
+  const playTestSound = (type: 'theft' | 'low') => {
+    // 1. Clear any active Audio object previews first
+    if ((window as any)._activePreviewAudio) {
+      try {
+        const oldAudio = (window as any)._activePreviewAudio;
+        oldAudio.onerror = null;
+        oldAudio.onended = null;
+        oldAudio.pause();
+      } catch (e) {}
+      (window as any)._activePreviewAudio = null;
+    }
+
+    // 2. Clear any speech synthesis
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+
+    if (testingSound === type) {
+      setTestingSound(null);
+      return;
+    }
+
+    setTestingSound(type);
+
+    // 3. Play Custom Audio if available
+    let customKey = type === 'theft' ? 'custom_audio_theft' : 'custom_audio_low';
+    const customAudio = localStorage.getItem(customKey);
+    if (customAudio) {
+      console.log(`Playing custom uploaded ${type} audio for test`);
+      const audio = new Audio(customAudio);
+      audio.volume = config.volume / 100;
+      (window as any)._activePreviewAudio = audio;
+      audio.onended = () => {
+        setTestingSound(null);
+      };
+      audio.play().catch(e => {
+        console.warn("Custom audioplay failed:", e);
+        setTestingSound(null);
+      });
+      return;
+    }
+
+    // 4. Use Speech Synthesis (Female Voice)
+    if ('speechSynthesis' in window) {
+      let speechText = "";
+      if (type === 'theft') {
+        speechText = "Charger Disconnected! Please connect the charger!";
+      } else {
+        speechText = "Battery Exhausted! Please connect the charger!";
+      }
+
+      const utterance = new SpeechSynthesisUtterance(speechText);
+      utterance.volume = config.volume / 100;
+      utterance.rate = 0.90; // Extremely patient and clear voice speed
+      utterance.pitch = 1.15; // Set higher pitch for friendly feminine voice
+
+      const voices = window.speechSynthesis.getVoices();
+      let femaleVoice = voices.find(v => 
+        v.lang.startsWith('en') && 
+        (v.name.toLowerCase().includes('female') || 
+         v.name.toLowerCase().includes('google') || 
+         v.name.toLowerCase().includes('zira') || 
+         v.name.toLowerCase().includes('samantha') ||
+         v.name.toLowerCase().includes('natural') ||
+         v.name.toLowerCase().includes('expressive'))
+      );
+
+      if (!femaleVoice) {
+        femaleVoice = voices.find(v => v.lang.startsWith('en'));
+      }
+
+      if (femaleVoice) {
+        utterance.voice = femaleVoice;
+      }
+      utterance.lang = 'en-US';
+
+      utterance.onend = () => {
+        setTestingSound(null);
+      };
+      utterance.onerror = () => {
+        setTestingSound(null);
+      };
+
+      window.speechSynthesis.speak(utterance);
+      return;
+    }
+
+    // 5. Hard Fallback to MP3 URL paths
+    let filename = type === 'theft' ? 'charger_disconnected.mp3' : 'battery_exhausted.mp3';
+
+    const urlsToTry = [
+      (window as any).location.origin + `/audio/${filename}`,
+      `audio/${filename}`,
+      `/audio/${filename}`
+    ];
+
+    let currentIndex = 0;
+
+    const tryPlay = () => {
+      if (currentIndex >= urlsToTry.length) {
+        console.error("All audio paths failed to load for preview.");
+        setTestingSound(null);
+        return;
+      }
+
+      const currentUrl = urlsToTry[currentIndex];
+      currentIndex++;
+
+      console.log(`Trying to play preview sound fallback: ${currentUrl}`);
+      const audio = new Audio(currentUrl);
+      audio.volume = config.volume / 100;
+      (window as any)._activePreviewAudio = audio;
+
+      audio.onended = () => {
+        setTestingSound(null);
+      };
+
+      audio.play().then(() => {
+        console.log(`Successfully playing preview layout: ${currentUrl}`);
+      }).catch(err => {
+        if (err.name === 'AbortError') {
+          console.log(`Play aborted for ${currentUrl}`);
+          return;
+        }
+        console.warn(`Play failed for ${currentUrl}:`, err);
+        tryPlay();
+      });
+    };
+
+    tryPlay();
+  };
 
   const handleToggleConnect = () => {
     const isTurningOn = !config.connectVoiceSpeakEnabled;
@@ -38,17 +189,53 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
 
   const connectInputRef = React.useRef<HTMLInputElement>(null);
   const fullInputRef = React.useRef<HTMLInputElement>(null);
+  const theftInputRef = React.useRef<HTMLInputElement>(null);
+  const lowInputRef = React.useRef<HTMLInputElement>(null);
 
   const handleConnectReplaceClick = () => {
-    triggerInterstitialAd(() => {
+    if (!navigator.onLine) {
       connectInputRef.current?.click();
-    }, 'sensors');
+    } else {
+      setActiveAdFor('connect');
+    }
   };
 
   const handleFullReplaceClick = () => {
-    triggerInterstitialAd(() => {
+    if (!navigator.onLine) {
       fullInputRef.current?.click();
-    }, 'sensors');
+    } else {
+      setActiveAdFor('full');
+    }
+  };
+
+  const handleTheftReplaceClick = () => {
+    if (!navigator.onLine) {
+      theftInputRef.current?.click();
+    } else {
+      setActiveAdFor('theft');
+    }
+  };
+
+  const handleLowReplaceClick = () => {
+    if (!navigator.onLine) {
+      lowInputRef.current?.click();
+    } else {
+      setActiveAdFor('low');
+    }
+  };
+
+  const closeAdAndOpenOptions = () => {
+    const target = activeAdFor;
+    setActiveAdFor(null);
+    if (target === 'connect') {
+      connectInputRef.current?.click();
+    } else if (target === 'full') {
+      fullInputRef.current?.click();
+    } else if (target === 'theft') {
+      theftInputRef.current?.click();
+    } else if (target === 'low') {
+      lowInputRef.current?.click();
+    }
   };
 
   const [hasCustomConnect, setHasCustomConnect] = useState<boolean>(() => {
@@ -62,6 +249,22 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
   const [hasCustomFull, setHasCustomFull] = useState<boolean>(() => {
     try {
       return !!localStorage.getItem('custom_audio_full');
+    } catch {
+      return false;
+    }
+  });
+
+  const [hasCustomTheft, setHasCustomTheft] = useState<boolean>(() => {
+    try {
+      return !!localStorage.getItem('custom_audio_theft');
+    } catch {
+      return false;
+    }
+  });
+
+  const [hasCustomLow, setHasCustomLow] = useState<boolean>(() => {
+    try {
+      return !!localStorage.getItem('custom_audio_low');
     } catch {
       return false;
     }
@@ -123,6 +326,64 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
   const handleResetFull = () => {
     localStorage.removeItem('custom_audio_full');
     setHasCustomFull(false);
+  };
+
+  const handleTheftUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      setErrorMsg("Please select an MP3 file smaller than 2MB to save browser storage space.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      if (base64) {
+        localStorage.setItem('custom_audio_theft', base64);
+        setHasCustomTheft(true);
+        setErrorMsg(null);
+        // Play preview
+        const audio = new Audio(base64);
+        audio.volume = config.volume / 100;
+        audio.play().catch(err => console.log("Failed to play custom sound:", err));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleResetTheft = () => {
+    localStorage.removeItem('custom_audio_theft');
+    setHasCustomTheft(false);
+  };
+
+  const handleLowUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      setErrorMsg("Please select an MP3 file smaller than 2MB to save browser storage space.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      if (base64) {
+        localStorage.setItem('custom_audio_low', base64);
+        setHasCustomLow(true);
+        setErrorMsg(null);
+        // Play preview
+        const audio = new Audio(base64);
+        audio.volume = config.volume / 100;
+        audio.play().catch(err => console.log("Failed to play custom sound:", err));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleResetLow = () => {
+    localStorage.removeItem('custom_audio_low');
+    setHasCustomLow(false);
   };
 
   const presets = [
@@ -319,7 +580,7 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
           </button>
           <div>
             <span className="text-[9px] uppercase tracking-wider text-accent font-extrabold">Customizer</span>
-            <h1 className="text-xl font-black text-white">Voice Alerts / बोलकर बताने वाला</h1>
+            <h1 className="text-xl font-black text-white">Voice Alerts</h1>
           </div>
         </div>
         <div className="p-2 bg-[#00FF88]/15 text-[#00FF88] rounded-xl"><Speech size={20} /></div>
@@ -328,7 +589,7 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
       {errorMsg && (
         <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex items-center justify-between text-left">
           <div className="flex-1 min-w-0 pr-2">
-            <span className="text-[9px] uppercase tracking-wider text-rose-400 font-extrabold block">SOUND NOTICE / ध्वनि सूचना</span>
+            <span className="text-[9px] uppercase tracking-wider text-rose-400 font-extrabold block">SOUND NOTICE</span>
             <p className="text-[11px] text-rose-200 mt-1 leading-normal font-medium">
               {errorMsg}
             </p>
@@ -369,6 +630,84 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
             ? "🎙️ Voice Alerts Mode Active - Spoken alerts play for anti-theft, low battery, and full charging." 
             : "🎵 Default Tune Mode Active - Classic sound beeps play for anti-theft, low battery, and full charging."}
         </p>
+      </div>
+
+      {/* 🗣️ Audio Preview Playback */}
+      <div className="bento-card p-5 bg-gradient-to-br from-slate-950 to-slate-900 border border-white/5 rounded-2xl space-y-4">
+        <div>
+          <span className="text-[9px] bg-[#00FF88]/15 text-[#00FF88] font-extrabold px-2 py-0.5 rounded border border-[#00FF88]/20">VOICE CUSTOMIZER</span>
+          <h2 className="text-xs font-black text-white mt-1.5 flex items-center gap-1.5 uppercase tracking-wider">
+            🚨 Anti-Theft & 20% Alarm Voice Settings
+          </h2>
+          <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+            Preview the offline high-quality alarm sound effects that play when the theft alarm goes off or battery falls to 20%.
+          </p>
+        </div>
+
+        {/* Player Controls */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+          {/* Anti-Theft Alarm Player */}
+          <div className="p-3 bg-slate-900/40 border border-white/5 rounded-xl flex items-center justify-between gap-2.5">
+            <div className="text-left flex-1 min-w-0">
+              <span className="text-[8px] uppercase tracking-wider text-rose-400 font-extrabold block">🚨 Theft Alarm</span>
+              <p className="text-[10px] text-white font-semibold truncate">
+                Charger Disconnected
+              </p>
+              <p className="text-[9px] text-slate-400 truncate">
+                Please connect charger!
+              </p>
+            </div>
+            <button
+              onClick={() => playTestSound('theft')}
+              className={`p-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0 ${
+                testingSound === 'theft'
+                  ? 'bg-rose-500/20 text-rose-400 animate-pulse border border-rose-500/30'
+                  : 'bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/10'
+              }`}
+            >
+              {testingSound === 'theft' ? (
+                <div className="flex gap-0.5 items-end justify-center w-4 h-4">
+                  <span className="w-0.5 bg-rose-400 animate-[bounce_1s_infinite_100ms] h-2"></span>
+                  <span className="w-0.5 bg-rose-400 animate-[bounce_1s_infinite_300ms] h-4"></span>
+                  <span className="w-0.5 bg-rose-400 animate-[bounce_1s_infinite_200ms] h-3"></span>
+                </div>
+              ) : (
+                <Play size={12} className="fill-current" />
+              )}
+            </button>
+          </div>
+
+          {/* 20% Battery Alarm Player */}
+          <div className="p-3 bg-slate-900/40 border border-white/5 rounded-xl flex items-center justify-between gap-2.5">
+            <div className="text-left flex-1 min-w-0">
+              <span className="text-[8px] uppercase tracking-wider text-[#00FF88] font-extrabold block">🔋 20% Low Alarm</span>
+              <p className="text-[10px] text-white font-semibold truncate">
+                Battery Exhausted
+              </p>
+              <p className="text-[9px] text-slate-400 truncate">
+                Please connect charger!
+              </p>
+            </div>
+            <button
+              onClick={() => playTestSound('low')}
+              className={`p-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0 ${
+                testingSound === 'low'
+                  ? 'bg-[#00FF88]/20 text-[#00FF88] animate-pulse border border-[#00FF88]/30'
+                  : 'bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/10'
+              }`}
+            >
+              {testingSound === 'low' ? (
+                <div className="flex gap-0.5 items-end justify-center w-4 h-4">
+                  <span className="w-0.5 bg-[#00FF88] animate-[bounce_1s_infinite_100ms] h-2"></span>
+                  <span className="w-0.5 bg-[#00FF88] animate-[bounce_1s_infinite_300ms] h-4"></span>
+                  <span className="w-0.5 bg-[#00FF88] animate-[bounce_1s_infinite_200ms] h-3"></span>
+                </div>
+              ) : (
+                <Play size={12} className="fill-current" />
+              )}
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Main Switch Panel */}
@@ -418,15 +757,15 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
       <div className="bento-card p-5 space-y-4 bg-slate-950 border border-white/5">
         <div>
           <span className="text-[9px] bg-[#00FF88]/15 text-[#00FF88] font-bold px-2 py-0.5 rounded border border-[#00FF88]/20">CUSTOM AUDIO UPLOADER</span>
-          <h3 className="text-xs font-black text-white uppercase tracking-wider mt-2">Replace Tones / मर्जी का MP3 लगाएं</h3>
-          <p className="text-[10px] text-slate-400">Replace the welcome plug-in tone and full charge alert tone with your own custom MP3s</p>
+          <h3 className="text-xs font-black text-white uppercase tracking-wider mt-2">Replace Tones</h3>
+          <p className="text-[10px] text-slate-400">Replace standard alarms and welcome sounds with your own custom MP3 files</p>
         </div>
 
         <div className="space-y-3 pt-1">
           {/* Connection Tone Upload Row */}
           <div className="p-3.5 bg-slate-900/60 border border-white/5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-left">
             <div>
-              <span className="text-[8px] font-extrabold uppercase text-slate-500 block">🔌 Plug-In Connection Audio (MP3)</span>
+              <span className="text-[8px] font-extrabold uppercase text-[#00FF88] block">🔌 Plug-In Connection Audio (MP3)</span>
               <p className="text-[11px] text-white font-bold mt-0.5">
                 {hasCustomConnect ? "🎵 Custom MP3 Applied" : "🗣️ Standard Preset Voice Greeting"}
               </p>
@@ -474,7 +813,7 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
           {/* Full Charged Tone Upload Row */}
           <div className="p-3.5 bg-slate-900/60 border border-white/5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-left">
             <div>
-              <span className="text-[8px] font-extrabold uppercase text-slate-500 block">🔋 Full Charged Alert Audio (MP3)</span>
+              <span className="text-[8px] font-extrabold uppercase text-indigo-400 block">🔋 Full Charged Alert Audio (MP3)</span>
               <p className="text-[11px] text-white font-bold mt-0.5">
                 {hasCustomFull ? "🎵 Custom MP3 Applied" : "🗣️ Standard Preset Full Charge Alert"}
               </p>
@@ -510,6 +849,102 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
                   </button>
                   <button
                     onClick={handleResetFull}
+                    className="p-2 px-3 bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border border-rose-500/20 rounded-xl text-[10px] font-bold cursor-pointer transition-colors"
+                  >
+                    Reset
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Theft Alarm Tone Upload Row */}
+          <div className="p-3.5 bg-slate-900/60 border border-white/5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-left">
+            <div>
+              <span className="text-[8px] font-extrabold uppercase text-rose-400 block">🚨 Theft Alarm Alert Audio (MP3)</span>
+              <p className="text-[11px] text-white font-bold mt-0.5">
+                {hasCustomTheft ? "🎵 Custom MP3 Applied" : "🗣️ Standard Preset Theft Alert"}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 mt-1 sm:mt-0">
+              <button 
+                onClick={handleTheftReplaceClick}
+                className="p-2 px-3 bg-[#00FF88]/15 hover:bg-[#00FF88]/25 border border-[#00FF88]/20 text-[#00FF88] text-[10px] font-extrabold uppercase rounded-xl cursor-pointer transition-all active:scale-95 text-center shrink-0"
+              >
+                Replace MP3
+              </button>
+              <input 
+                ref={theftInputRef}
+                type="file" 
+                accept="audio/*" 
+                className="hidden" 
+                onChange={handleTheftUpload} 
+              />
+              {hasCustomTheft && (
+                <>
+                  <button
+                    onClick={() => {
+                      const base64 = localStorage.getItem('custom_audio_theft');
+                      if (base64) {
+                        const audio = new Audio(base64);
+                        audio.volume = config.volume / 100;
+                        audio.play().catch(e => console.warn("Failed to play custom sound:", e));
+                      }
+                    }}
+                    className="p-2.5 bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-400 border border-indigo-500/20 rounded-xl cursor-pointer transition-colors"
+                  >
+                    <Play size={12} fill="currentColor" />
+                  </button>
+                  <button
+                    onClick={handleResetTheft}
+                    className="p-2 px-3 bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border border-rose-500/20 rounded-xl text-[10px] font-bold cursor-pointer transition-colors"
+                  >
+                    Reset
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Low Battery Tone Upload Row */}
+          <div className="p-3.5 bg-slate-900/60 border border-white/5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-left">
+            <div>
+              <span className="text-[8px] font-extrabold uppercase text-amber-400 block">🔋 Low Battery Alarm Audio (MP3)</span>
+              <p className="text-[11px] text-white font-bold mt-0.5">
+                {hasCustomLow ? "🎵 Custom MP3 Applied" : "🗣️ Standard Preset Low Battery Alert"}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 mt-1 sm:mt-0">
+              <button 
+                onClick={handleLowReplaceClick}
+                className="p-2 px-3 bg-[#00FF88]/15 hover:bg-[#00FF88]/25 border border-[#00FF88]/20 text-[#00FF88] text-[10px] font-extrabold uppercase rounded-xl cursor-pointer transition-all active:scale-95 text-center shrink-0"
+              >
+                Replace MP3
+              </button>
+              <input 
+                ref={lowInputRef}
+                type="file" 
+                accept="audio/*" 
+                className="hidden" 
+                onChange={handleLowUpload} 
+              />
+              {hasCustomLow && (
+                <>
+                  <button
+                    onClick={() => {
+                      const base64 = localStorage.getItem('custom_audio_low');
+                      if (base64) {
+                        const audio = new Audio(base64);
+                        audio.volume = config.volume / 100;
+                        audio.play().catch(e => console.warn("Failed to play custom sound:", e));
+                      }
+                    }}
+                    className="p-2.5 bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-400 border border-indigo-500/20 rounded-xl cursor-pointer transition-colors"
+                  >
+                    <Play size={12} fill="currentColor" />
+                  </button>
+                  <button
+                    onClick={handleResetLow}
                     className="p-2 px-3 bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border border-rose-500/20 rounded-xl text-[10px] font-bold cursor-pointer transition-colors"
                   >
                     Reset
@@ -599,6 +1034,79 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
       <div className="bento-card p-4 text-slate-500 text-[10px] leading-relaxed">
         <strong>💡 Real Voice Alerts Enabled:</strong> This feature utilizes pre-installed, offline-ready high-quality MP3 voice assets designed to play seamlessly on your device. When active, plugging or unplugging the charger will welcome or alert you loud and clear.
       </div>
+
+      {/* 📺 Premium Sponsor Interstitial Ad Overlay */}
+      {activeAdFor && (
+        <div className="fixed inset-0 z-[9999] bg-slate-950/98 backdrop-blur-xl flex flex-col items-center justify-center p-6 text-center animate-fade-in select-none">
+          <div className="max-w-md w-full bg-slate-900 border border-white/10 rounded-[2.5rem] p-6 shadow-2xl relative overflow-hidden">
+            {/* Gradient Header Line */}
+            <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-[#00FF88] via-indigo-500 to-rose-500" />
+            
+            {/* Header branding */}
+            <div className="flex justify-between items-center mb-6 pt-2">
+              <span className="text-[10px] bg-[#00FF88]/15 text-[#00FF88] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">
+                Sponsor Advertisement
+              </span>
+              <span className="text-[10px] text-slate-400 font-bold flex items-center gap-1.5 bg-white/5 px-2.5 py-1 rounded-full">
+                <span className="inline-block w-2.5 h-2.5 rounded-full bg-[#00FF88] animate-ping" style={{ animationDuration: '2s' }} />
+                Online Mode Active
+              </span>
+            </div>
+
+            {/* Ad Central Content Block */}
+            <div className="space-y-4 mb-8">
+              <div className="w-16 h-16 bg-gradient-to-br from-[#00FF88]/20 to-indigo-500/20 text-[#00FF88] rounded-3xl mx-auto flex items-center justify-center border border-white/10 shadow-[0_0_30px_rgba(3,255,136,0.15)]">
+                <ShieldCheck size={32} className="text-[#00FF88]" />
+              </div>
+              
+              <div>
+                <h3 className="text-base font-black text-white text-center">ChargeGuard Pro Premium Security</h3>
+                <p className="text-[11px] text-slate-400 mt-1 max-w-xs mx-auto leading-relaxed">
+                  Protect battery health, active theft prevention sirens, and configure responsive charging diagnostics!
+                </p>
+              </div>
+
+              {/* Simulated Mobile Ad Banner Asset */}
+              <div className="bg-slate-950/90 rounded-[1.5rem] p-4 border border-white/5 relative overflow-hidden text-left hover:border-[#00FF88]/25 transition-all">
+                <span className="absolute top-2 right-2 bg-indigo-500/20 text-indigo-400 text-[8px] font-black px-1.5 py-0.5 rounded uppercase">
+                  Sponsored
+                </span>
+                <span className="text-[9px] text-slate-500 font-extrabold uppercase tracking-widest block">Recommended Action</span>
+                <h4 className="text-xs font-black text-white mt-1">Super Charger Cooler & Optimizer 2026</h4>
+                <p className="text-[10px] text-slate-400 mt-0.5 leading-relaxed">
+                  Optimize smartphone charging patterns, reduce server overhead temperature, and maximize long-term health.
+                </p>
+                <div className="mt-3 text-[10px] font-black text-[#00FF88] flex items-center gap-1 cursor-pointer">
+                  Download Free Application <span className="text-xs">➜</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Controls / Footer Actions */}
+            <div className="flex flex-col gap-3">
+              {adCountdown > 0 ? (
+                <button
+                  disabled
+                  className="w-full py-4 bg-slate-800 text-slate-500 rounded-2xl text-xs font-black uppercase tracking-wider cursor-not-allowed border border-white/5"
+                >
+                  Options Loading in {adCountdown}s... / {adCountdown} सेकंड...
+                </button>
+              ) : (
+                <button
+                  onClick={closeAdAndOpenOptions}
+                  className="w-full py-4 bg-[#00FF88] text-slate-950 hover:bg-[#00FF88]/90 active:scale-[0.98] rounded-2xl text-xs font-black uppercase tracking-wider cursor-pointer shadow-[0_0_20px_rgba(3,255,136,0.25)] border-none transition-all"
+                >
+                  Close & Open File Picker / विज्ञापन बंद करें
+                </button>
+              )}
+              
+              <p className="text-[9.5px] text-slate-500">
+                Ad sponsors support our free high-quality voice synthesized voice clips.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 }

@@ -422,6 +422,12 @@ export const triggerInterstitialAd = async (
   onComplete: () => void,
   type: 'cleaner' | 'battery' | 'security' | 'sensors' | 'general' = 'general'
 ) => {
+  if (!navigator.onLine) {
+    console.log("No internet connection - executing option directly without showing ads.");
+    onComplete();
+    return;
+  }
+
   const isNative = Capacitor.isNativePlatform();
   const getAdUnitId = (adrType: 'banner' | 'native' | 'interstitial'): string => {
     const isIos = Capacitor.getPlatform() === 'ios';

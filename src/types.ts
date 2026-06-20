@@ -54,6 +54,7 @@ export interface AlarmConfig {
   fullVoiceSpeakEnabled?: boolean;
   connectVoiceSpeakText?: string;
   fullVoiceSpeakText?: string;
+  useHindiVoice?: boolean;
   stickyNotificationEnabled?: boolean;
   stickyNotificationTitle?: string;
   stickyNotificationStyle?: 'compact' | 'detailed';

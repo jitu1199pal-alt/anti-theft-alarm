@@ -65,6 +65,7 @@ public class AlarmServicePlugin extends Plugin {
         boolean vibrate = call.getBoolean("vibrate", true);
 
         boolean voiceAlertMode = call.getBoolean("voiceAlertMode", true);
+        boolean useHindi = call.getBoolean("useHindi", false);
         String sound = call.getString("sound", "Rapid Beep");
         boolean connectVoiceSpeakEnabled = call.getBoolean("connectVoiceSpeakEnabled", true);
         boolean fullVoiceSpeakEnabled = call.getBoolean("fullVoiceSpeakEnabled", true);
@@ -78,6 +79,7 @@ public class AlarmServicePlugin extends Plugin {
         serviceIntent.putExtra("vibrate", vibrate);
 
         serviceIntent.putExtra("voiceAlertMode", voiceAlertMode);
+        serviceIntent.putExtra("useHindi", useHindi);
         serviceIntent.putExtra("sound", sound);
         serviceIntent.putExtra("connectVoiceSpeakEnabled", connectVoiceSpeakEnabled);
         serviceIntent.putExtra("fullVoiceSpeakEnabled", fullVoiceSpeakEnabled);
