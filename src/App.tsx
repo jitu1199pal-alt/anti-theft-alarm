@@ -310,12 +310,12 @@ export default function App() {
         audioSrc = '/audio/anime_kawaii_full.mp3';
       } else {
         // Falling back to standard voice alert keywords
-        if (tLower.includes('thank') || tLower.includes('धन्यवाद') || tLower.includes('charging me')) {
+        if (tLower.includes('boost') || tLower.includes('मैमोरी') || tLower.includes('सफलता')) {
+          audioSrc = isHindi ? '/audio/booster_voice_hi.mp3' : '/audio/booster_voice.mp3';
+        } else if (tLower.includes('thank') || tLower.includes('धन्यवाद') || tLower.includes('charging me')) {
           audioSrc = isHindi ? '/audio/connect_voice_hi.mp3' : '/audio/connect_voice.mp3';
         } else if (tLower.includes('unplug') || tLower.includes('full') || tLower.includes('हटा')) {
           audioSrc = isHindi ? '/audio/full_voice_hi.mp3' : '/audio/full_voice.mp3';
-        } else if (tLower.includes('boost') || tLower.includes('मैमोरी') || tLower.includes('सफलता')) {
-          audioSrc = isHindi ? '/audio/booster_voice_hi.mp3' : '/audio/booster_voice.mp3';
         } else if (tLower.includes('disconnected') || tLower.includes('हटा दिया')) {
           audioSrc = isHindi ? '/audio/charger_disconnected_hi.mp3' : '/audio/charger_disconnected.mp3';
         } else if (tLower.includes('achieved') || tLower.includes('लक्ष्य')) {
@@ -520,6 +520,18 @@ export default function App() {
 
   const syncNativeServiceState = async () => {
     if (Capacitor.isNativePlatform()) {
+      try {
+        // Retrieve and handle any native notification boost requests
+        const res = await AlarmService.getPersistedValue({ key: 'pending_boost' }) as any;
+        if (res && res.value === 'true') {
+          console.log("Deep-linking to phone optimizer screen from native notification action");
+          setScreen(Screen.CLEANER);
+          await AlarmService.savePersistedValue({ key: 'pending_boost', value: 'false' });
+        }
+      } catch (e) {
+        console.error("Failed checking pending native boost state:", e);
+      }
+
       try {
         const state = await AlarmService.getServiceState() as any;
         
@@ -949,7 +961,7 @@ export default function App() {
       targetPercentage: 98,
       lowBatteryPercentage: 20,
       enabled: true,
-      sound: AlarmSound.CYBER,
+      sound: AlarmSound.PULSE,
       volume: 80,
       repeat: false,
       voiceAlert: true,
@@ -3829,7 +3841,7 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
 
   useEffect(() => {
     if (reason === 'theft' || reason === 'low') {
-      const duration = reason === 'low' ? 3000 : 5000;
+      const duration = 3000; // exactly 3 seconds for both anti-theft and 20% low battery alarm
       const timer = setTimeout(() => {
         console.log(`Automatically disarming ${reason} alarm after ${duration}ms`);
         if (onStopRef.current) {

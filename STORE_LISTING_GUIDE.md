@@ -8,34 +8,33 @@ This guide contains all the assets, texts, metadata, and responses required to s
 ## 1. App Metadata (Pre-written Copy)
 
 ### 📱 App Title (Max 30 characters)
-> **Charging Alarm Pro: Anti-Theft**
+> **Charging Alarm Pro: Anti Theft**
 
 ### 📝 Short Description (Max 80 characters)
-> **Premium anti-theft alarm, charger security guard, and live battery health logs.**
+> **Protect your phone with charger alarms, touch security, and battery diagnostics.**
 
 ### 📖 Full Description (High-Converting Copy)
 ```text
-Protect your smartphone's battery health and defend it against theft with Charging Alarm Pro! 
+Charging Alarm Pro is a reliable utility designed to help protect your mobile device from unauthorized handling while charging and keep you informed about your battery's performance.
 
-Charging Alarm Pro is a production-ready, premium cybersecurity companion designed to safeguard your charger connection and protect your device from unauthorized access, pickpockets, and overcharging damage.
+Our lightweight, easy-to-use companion helps ensure peace of mind whether you are charging your phone in a public cafe, a busy office, or simply leaving it resting on a table at home.
 
-🛡️ ACTIVE SECURITY FEATUES:
-• Charger Disconnect Alarm: Instant high-volume alarm triggers if your phone is unplugged without authorization. Perfect for public transport, offices, or shared spaces.
-• Pocket/Bag Theft Protection: Triggers loud alerts immediately if the device is pulled out of your pocket or backpack.
-• Motion & Touch Guard: Real-time kinetic sensors sound the alarm if someone tries to move, touch, or pick up your device while you're away.
+HOW IT WORKS
+When you activate the active guard, the application monitors your device using its charging connection and built-in sensors. If anyone disconnects your phone or tries to pick it up without your permission, the app triggers a clear, high-volume alarm. This helps intercept unauthorized access and keeps you aware of your device.
 
-⚡ BATTERY HEALTH & DIAGNOSTICS:
-• Live Battery Percentage Monitoring with elegant real-time HUD graphics.
-• Intelligent Charge Level Alerts: Pick your sweet spot (e.g., 80% charge threshold or low battery warning) to optimize custom battery-preservation cycles and slow down lithium degradation.
-• Interactive Session Logs: Review comprehensive analytics, charge duration, start/end level metrics, and cycle logs completely offline.
-• Live Device Temperature Sensors with quick thermal threshold safeguards.
+KEY UTILITY FEATURES
+• Charger Disconnect Alerts: Instantly triggers an alert if your device is unplugged from its power adapter.
+• Motion & Touch Security: Sounds a loud alert if someone moves, tilts, or pick up your phone while you are away.
+• Pocket & Bag Protection: Detects if the device is pulled out of your pocket or backpack in crowded areas.
 
-💎 PREMIUM FEATURES:
-• Complete Client-Side Local Storage: Your alarms history log and settings remain perfectly sandboxed in Android storage without external databases.
-• Elegant Dark & Light Themes: Responsive interface designed to match your system aesthetics perfectly.
-• Fully Ad-Free Responsive Experience: Minimal latency, zero background bloat.
+BATTERY DIAGNOSTICS & MANAGEMENT
+Stay updated on your phone’s daily charging cycles and keep your battery in optimal shape:
+• Real-time Monitoring: Check live battery percentage, voltage, and precise temperature readings.
+• Custom Threshold Alarms: Avoid overcharging wear by configuring alerts for custom thresholds (such as 80% charge level) to sustain battery longevity.
+• Local Session Logs: Review stable, offline records of charging intervals, charge duration, and start/end power metrics.
 
-Secure your phone today and extend your battery life cycle!
+PRIVACY FIRST
+Charging Alarm Pro processes all sensors and analytics offline. Your security events history and settings are saved completely locally in sandboxed secure storage. The application does not collect personal data, connect to cloud databases, or run unnecessary background processes.
 ```
 
 ---

@@ -85,6 +85,30 @@ public class AlarmService extends Service {
                 return START_NOT_STICKY;
             }
 
+            if ("BOOST_PHONE".equals(action)) {
+                try {
+                    prefs.edit().putString("persisted_pending_boost", "true").apply();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(new Runnable() {
+                    @Override
+                    public void run() {
+                        android.widget.Toast.makeText(getApplicationContext(), "Phone Booster Activated! Memory cleared.", android.widget.Toast.LENGTH_LONG).show();
+                    }
+                });
+
+                try {
+                    Intent mainIntent = new Intent(this, MainActivity.class);
+                    mainIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                    mainIntent.putExtra("triggerBoost", true);
+                    startActivity(mainIntent);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+
             if (intent.hasExtra("theftAlarm")) {
                 theftAlarmEnabled = intent.getBooleanExtra("theftAlarm", theftAlarmEnabled);
             }
@@ -135,7 +159,32 @@ public class AlarmService extends Service {
         registerReceiver(batteryReceiver, filter);
 
         // Start Foreground Service with notification
-        showOngoingNotification("ChargeGuard Pro Active Monitoring", "Protecting your device in background.");
+        showOngoingNotification("ChargeGuard Pro Security", "Junk full | Cores: Status Active");
+
+        // Also post the designated Sticky Notification Panel with text "Recurrent reminder active"
+        try {
+            NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) {
+                Intent stickyIntent = new Intent(this, MainActivity.class);
+                PendingIntent stickyPendingIntent = PendingIntent.getActivity(
+                        this,
+                        333,
+                        stickyIntent,
+                        PendingIntent.FLAG_IMMUTABLE
+                );
+                Notification stickyNotification = new NotificationCompat.Builder(this, CHANNEL_ID)
+                        .setContentTitle("Sticky Notification Panel")
+                        .setContentText("Recurrent reminder active")
+                        .setSmallIcon(R.mipmap.ic_launcher)
+                        .setContentIntent(stickyPendingIntent)
+                        .setOngoing(true)
+                        .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                        .build();
+                nm.notify(NOTIFICATION_ID + 100, stickyNotification);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
 
         return START_STICKY;
     }
@@ -263,11 +312,11 @@ public class AlarmService extends Service {
         showAlarmNotification(title, "Unlock/swipe to stop the alarm.");
         launchMainActivity();
 
-        if ("theft".equals(reason)) {
+        if ("theft".equals(reason) || "low".equals(reason)) {
             new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(new Runnable() {
                 @Override
                 public void run() {
-                    if (isAlarmActive && "theft".equals(alarmReason)) {
+                    if (isAlarmActive && (reason.equals(alarmReason))) {
                         stopAlarmSound();
                         isAlarmActive = false;
                         alarmReason = null;
@@ -282,7 +331,7 @@ public class AlarmService extends Service {
                         }
                     }
                 }
-            }, 5000);
+            }, 3000); // alarm playtime set to exactly 3 seconds only
         }
     }
 
@@ -406,6 +455,26 @@ public class AlarmService extends Service {
                 PendingIntent.FLAG_IMMUTABLE
         );
 
+        // Boost Phone action
+        Intent boostIntent = new Intent(this, AlarmService.class);
+        boostIntent.setAction("BOOST_PHONE");
+        PendingIntent boostPendingIntent = PendingIntent.getService(
+                this,
+                111,
+                boostIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+
+        // Dismiss action
+        Intent dismissIntent = new Intent(this, AlarmService.class);
+        dismissIntent.setAction("STOP_SERVICE");
+        PendingIntent dismissPendingIntent = PendingIntent.getService(
+                this,
+                222,
+                dismissIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+
         Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle(title)
                 .setContentText(desc)
@@ -413,6 +482,8 @@ public class AlarmService extends Service {
                 .setContentIntent(pendingIntent)
                 .setOngoing(true)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .addAction(0, "Boost Phone", boostPendingIntent)
+                .addAction(0, "Dismiss", dismissPendingIntent)
                 .build();
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -455,6 +526,13 @@ public class AlarmService extends Service {
 
     @Override
     public void onDestroy() {
+        try {
+            NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) {
+                nm.cancel(NOTIFICATION_ID + 100);
+            }
+        } catch (Exception e) {}
+
         try {
             unregisterReceiver(batteryReceiver);
         } catch (Exception e) {}
