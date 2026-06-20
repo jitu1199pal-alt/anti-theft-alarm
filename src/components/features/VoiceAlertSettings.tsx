@@ -224,25 +224,28 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
   const handleSpeechSpeak = (text: string, type: 'connect' | 'full', presetId: string) => {
     try {
       let audio: HTMLAudioElement;
+      let primaryUrl = '';
+      let fallbackUrl = `audio/${presetId}_${type}.mp3`;
 
       if (type === 'connect') {
         const customConnect = localStorage.getItem('custom_audio_connect');
         if (customConnect) {
           console.log("Playing custom connection tone for preview");
-          audio = new Audio(customConnect);
+          primaryUrl = customConnect;
         } else {
-          audio = new Audio(window.location.origin + `/audio/${presetId}_${type}.mp3`);
+          primaryUrl = window.location.origin + `/audio/${presetId}_${type}.mp3`;
         }
       } else {
         const customFull = localStorage.getItem('custom_audio_full');
         if (customFull) {
           console.log("Playing custom full charged tone for preview");
-          audio = new Audio(customFull);
+          primaryUrl = customFull;
         } else {
-          audio = new Audio(window.location.origin + `/audio/${presetId}_${type}.mp3`);
+          primaryUrl = window.location.origin + `/audio/${presetId}_${type}.mp3`;
         }
       }
 
+      audio = new Audio(primaryUrl);
       setPlayingVoice(`${type}_active`);
       audio.volume = config.volume / 100;
 
@@ -257,14 +260,44 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
       audio.onended = () => {
         setPlayingVoice(null);
       };
+
+      let triedFallback = false;
       audio.onerror = (err) => {
-        console.warn("Offline voice MP3 playback failed, falling back to TTS:", err);
-        speakFallbackSpeech(text, presetId);
+        if (!triedFallback && !primaryUrl.startsWith('data:') && !primaryUrl.startsWith('blob:')) {
+          console.warn("Primary offline voice loading failed, trying direct relative path:", fallbackUrl);
+          triedFallback = true;
+          try {
+            audio.src = fallbackUrl;
+            audio.play().catch(fe => {
+              console.warn("Relative path lookup failed:", fe);
+              speakFallbackSpeech(text, presetId);
+            });
+          } catch(err2) {
+            speakFallbackSpeech(text, presetId);
+          }
+        } else {
+          console.warn("Offline voice MP3 playback failed, falling back to TTS:", err);
+          speakFallbackSpeech(text, presetId);
+        }
       };
 
       audio.play().catch(e => {
-        console.warn("Offline voice playable exception, falling back to TTS:", e);
-        speakFallbackSpeech(text, presetId);
+        if (!triedFallback && !primaryUrl.startsWith('data:') && !primaryUrl.startsWith('blob:')) {
+          console.warn("Primary play promise failed, trying direct relative path:", fallbackUrl);
+          triedFallback = true;
+          try {
+            audio.src = fallbackUrl;
+            audio.play().catch(fe => {
+              console.warn("Relative path play promise failed:", fe);
+              speakFallbackSpeech(text, presetId);
+            });
+          } catch(err2) {
+            speakFallbackSpeech(text, presetId);
+          }
+        } else {
+          console.warn("Offline voice playable exception, falling back to TTS:", e);
+          speakFallbackSpeech(text, presetId);
+        }
       });
     } catch (e) {
       console.error("Audio block error, falling back to TTS:", e);
@@ -308,6 +341,35 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
           </button>
         </div>
       )}
+
+      {/* 🟢 Dual-green Switch for Voice Alert vs. Tune 🟢 */}
+      <div className="bento-card p-5 bg-slate-950 border border-white/5 rounded-2xl space-y-3">
+        <div className="flex items-center justify-between px-2">
+          <span className={`text-[13px] font-black transition-all ${config.voiceAlert ? 'text-[#00FF88] opacity-100 scale-105' : 'text-slate-400 opacity-60'}`}>Voice Alert</span>
+          
+          <button
+            onClick={() => {
+              triggerInterstitialAd(() => {
+                setConfig(prev => ({ ...prev, voiceAlert: !prev.voiceAlert }));
+              }, 'security');
+            }}
+            className="w-14 h-7 bg-[#00FF88] rounded-full relative transition-all cursor-pointer shadow-[0_0_15px_rgba(0,255,136,0.3)] flex items-center shrink-0"
+          >
+            <div 
+              className={`w-5 h-5 bg-slate-950 rounded-full absolute transition-all border border-[#00FF88] ${
+                config.voiceAlert ? 'left-1' : 'left-8'
+              }`} 
+            />
+          </button>
+
+          <span className={`text-[13px] font-black transition-all ${!config.voiceAlert ? 'text-[#00FF88] opacity-100 scale-105' : 'text-slate-400 opacity-60'}`}>Tune</span>
+        </div>
+        <p className="text-[10px] text-slate-400 font-bold text-center leading-relaxed">
+          {config.voiceAlert 
+            ? "🎙️ Voice Alerts Mode Active - Spoken alerts play for anti-theft, low battery, and full charging." 
+            : "🎵 Default Tune Mode Active - Classic sound beeps play for anti-theft, low battery, and full charging."}
+        </p>
+      </div>
 
       {/* Main Switch Panel */}
       <div className="bento-card p-5 space-y-4 bg-slate-950 border border-white/5">

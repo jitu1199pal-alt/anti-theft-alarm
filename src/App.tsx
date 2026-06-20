@@ -39,6 +39,12 @@ interface AlarmServicePluginType {
     targetPercentage: number;
     lowBatteryPercentage: number;
     vibrate: boolean;
+    voiceAlertMode?: boolean;
+    sound?: string;
+    connectVoiceSpeakEnabled?: boolean;
+    fullVoiceSpeakEnabled?: boolean;
+    connectVoiceSpeakText?: string;
+    fullVoiceSpeakText?: string;
   }): Promise<{ success: boolean }>;
   stopService(): Promise<{ success: boolean }>;
   getServiceState(): Promise<{ running: boolean; isAlarming: boolean; alarmReason: string }>;
@@ -573,6 +579,16 @@ export default function App() {
     }
   };
 
+  // Real-time synchronization of native background service state with React UI
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      const pollInterval = setInterval(() => {
+        syncNativeServiceState();
+      }, 3000);
+      return () => clearInterval(pollInterval);
+    }
+  }, []);
+
   // Automatically monitor and update permissions & sync native alarm service when user returns to app focus
   useEffect(() => {
     const checkNotificationPermission = () => {
@@ -1032,7 +1048,9 @@ export default function App() {
         mainAudioContext.resume().catch(() => {});
       }
       if (alarmConfig.connectVoiceSpeakEnabled === true) {
-        speakText(alarmConfig.connectVoiceSpeakText || "Thank you for charging me!");
+        if (!Capacitor.isNativePlatform()) {
+          speakText(alarmConfig.connectVoiceSpeakText || "Thank you for charging me!");
+        }
       }
     }
     prevChargingRef.current = battery.charging;
@@ -1064,7 +1082,13 @@ export default function App() {
               theftAlarm: securityConfig.theftAlarm,
               targetPercentage: alarmConfig.targetPercentage,
               lowBatteryPercentage: alarmConfig.lowBatteryPercentage,
-              vibrate: alarmConfig.vibrate
+              vibrate: alarmConfig.vibrate,
+              voiceAlertMode: alarmConfig.voiceAlert,
+              sound: alarmConfig.sound,
+              connectVoiceSpeakEnabled: alarmConfig.connectVoiceSpeakEnabled,
+              fullVoiceSpeakEnabled: alarmConfig.fullVoiceSpeakEnabled,
+              connectVoiceSpeakText: alarmConfig.connectVoiceSpeakText,
+              fullVoiceSpeakText: alarmConfig.fullVoiceSpeakText
             });
           } else {
             await AlarmService.stopService();
@@ -1075,7 +1099,7 @@ export default function App() {
       }
     };
     syncNativeService();
-  }, [isMonitoring, isInitialized, securityConfig.theftAlarm, alarmConfig.targetPercentage, alarmConfig.lowBatteryPercentage, alarmConfig.vibrate]);
+  }, [isMonitoring, isInitialized, securityConfig.theftAlarm, alarmConfig.targetPercentage, alarmConfig.lowBatteryPercentage, alarmConfig.vibrate, alarmConfig.voiceAlert, alarmConfig.sound, alarmConfig.connectVoiceSpeakEnabled, alarmConfig.fullVoiceSpeakEnabled, alarmConfig.connectVoiceSpeakText, alarmConfig.fullVoiceSpeakText]);
 
   // Refresh Native Service if alarm is disarmed/dismissed but monitoring is kept active
   useEffect(() => {
@@ -1084,10 +1108,16 @@ export default function App() {
         theftAlarm: securityConfig.theftAlarm,
         targetPercentage: alarmConfig.targetPercentage,
         lowBatteryPercentage: alarmConfig.lowBatteryPercentage,
-        vibrate: alarmConfig.vibrate
+        vibrate: alarmConfig.vibrate,
+        voiceAlertMode: alarmConfig.voiceAlert,
+        sound: alarmConfig.sound,
+        connectVoiceSpeakEnabled: alarmConfig.connectVoiceSpeakEnabled,
+        fullVoiceSpeakEnabled: alarmConfig.fullVoiceSpeakEnabled,
+        connectVoiceSpeakText: alarmConfig.connectVoiceSpeakText,
+        fullVoiceSpeakText: alarmConfig.fullVoiceSpeakText
       }).catch(e => console.error("Failed to reset Native Service on disarm:", e));
     }
-  }, [alarmReason, isMonitoring, securityConfig.theftAlarm, alarmConfig.targetPercentage, alarmConfig.lowBatteryPercentage, alarmConfig.vibrate]);
+  }, [alarmReason, isMonitoring, securityConfig.theftAlarm, alarmConfig.targetPercentage, alarmConfig.lowBatteryPercentage, alarmConfig.vibrate, alarmConfig.voiceAlert, alarmConfig.sound, alarmConfig.connectVoiceSpeakEnabled, alarmConfig.fullVoiceSpeakEnabled, alarmConfig.connectVoiceSpeakText, alarmConfig.fullVoiceSpeakText]);
 
   useEffect(() => {
     localStorage.setItem('alarmConfig', JSON.stringify(alarmConfig));
@@ -1227,7 +1257,9 @@ export default function App() {
         setAlarmReason('full');
         setScreen(Screen.LOCK);
         if (alarmConfig.fullVoiceSpeakEnabled === true) {
-          speakText(alarmConfig.fullVoiceSpeakText || "Sir, please unplug the charger, battery is full!");
+          if (!Capacitor.isNativePlatform()) {
+            speakText(alarmConfig.fullVoiceSpeakText || "Sir, please unplug the charger, battery is full!");
+          }
         }
       }
     }
@@ -1381,7 +1413,8 @@ export default function App() {
             setAlarmConfig={setAlarmConfig} 
             setScreen={setScreen} 
             onBoostIcon={() => {
-              speakText("Phone memory and background processes successfully boosted!");
+              // BatteryAvatar manages its own high-quality offline audio/custom MP3 directly to avoid dual overlaps
+              console.log("Virtual Pet Feed Boost Action triggered successfully.");
             }} 
             triggerInterstitial={triggerAdMobInterstitial}
           />
@@ -3874,6 +3907,19 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
   useEffect(() => {
     if (isSnoozed || isSwiped) return;
 
+    // If running natively, the background service (AlarmService.java) manages all alarm sound and vibrations perfectly.
+    // We only perform the visual flashing effect in the WebView overlay to prevent double playbacks and clashing.
+    if (Capacitor.isNativePlatform()) {
+      const flashInterval = setInterval(() => {
+        document.body.style.backgroundColor = document.body.style.backgroundColor === 'rgb(2, 6, 23)' ? (config.alarmColor || 'rgb(239, 68, 68)') : 'rgb(2, 6, 23)';
+      }, 500);
+
+      return () => {
+        clearInterval(flashInterval);
+        document.body.style.backgroundColor = 'rgb(2, 6, 23)';
+      };
+    }
+
     const isTheft = reason === 'theft' || reason === 'test';
     const isFull = reason === 'full';
     const isLow = reason === 'low';
@@ -3893,10 +3939,11 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
         audioSrc = isHindi ? '/audio/system_alert_hi.mp3' : '/audio/system_alert.mp3';
       }
 
-      console.log("Playing offline alarm voice MP3 instead of TTS:", audioSrc);
+      console.log("Playing offline alarm voice MP3 in loop:", audioSrc);
       const relativeSrc = audioSrc.startsWith('/') ? audioSrc.slice(1) : audioSrc;
       voiceAudio = new Audio(relativeSrc);
       voiceAudio.volume = config.volume / 100;
+      voiceAudio.loop = true; // Loop the voice alert so it speaks fully and repeats continuously!
       voiceAudio.play().catch(e => {
         console.warn("Offline alarm voice MP3 playback failed:", e);
       });
@@ -4024,7 +4071,8 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
     window.addEventListener('touchstart', unlockAudio);
     window.addEventListener('click', unlockAudio);
 
-    const soundInterval = setInterval(startAlarm, 900);
+    // Only set up synthesizer beeping sound (tune) if Voice Alert mode is NOT active!
+    const soundInterval = !config.voiceAlert ? setInterval(startAlarm, 900) : null;
     const flashInterval = setInterval(() => {
       document.body.style.backgroundColor = document.body.style.backgroundColor === 'rgb(2, 6, 23)' ? (config.alarmColor || 'rgb(239, 68, 68)') : 'rgb(2, 6, 23)';
     }, 500);
@@ -4036,7 +4084,9 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
         voiceAudio.pause();
         voiceAudio.src = '';
       }
-      clearInterval(soundInterval);
+      if (soundInterval) {
+        clearInterval(soundInterval);
+      }
       clearInterval(flashInterval);
       if (oscillator) {
         try { (oscillator as any).stop(); } catch(e) {}

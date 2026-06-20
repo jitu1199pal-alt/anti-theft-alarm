@@ -64,11 +64,25 @@ public class AlarmServicePlugin extends Plugin {
         int lowBatteryPercentage = call.getInt("lowBatteryPercentage", 20);
         boolean vibrate = call.getBoolean("vibrate", true);
 
+        boolean voiceAlertMode = call.getBoolean("voiceAlertMode", true);
+        String sound = call.getString("sound", "Rapid Beep");
+        boolean connectVoiceSpeakEnabled = call.getBoolean("connectVoiceSpeakEnabled", true);
+        boolean fullVoiceSpeakEnabled = call.getBoolean("fullVoiceSpeakEnabled", true);
+        String connectVoiceSpeakText = call.getString("connectVoiceSpeakText", "Thank you for charging me!");
+        String fullVoiceSpeakText = call.getString("fullVoiceSpeakText", "Sir, please unplug the charger, battery is full!");
+
         Intent serviceIntent = new Intent(context, AlarmService.class);
         serviceIntent.putExtra("theftAlarm", theftAlarm);
         serviceIntent.putExtra("targetPercentage", targetPercentage);
         serviceIntent.putExtra("lowBatteryPercentage", lowBatteryPercentage);
         serviceIntent.putExtra("vibrate", vibrate);
+
+        serviceIntent.putExtra("voiceAlertMode", voiceAlertMode);
+        serviceIntent.putExtra("sound", sound);
+        serviceIntent.putExtra("connectVoiceSpeakEnabled", connectVoiceSpeakEnabled);
+        serviceIntent.putExtra("fullVoiceSpeakEnabled", fullVoiceSpeakEnabled);
+        serviceIntent.putExtra("connectVoiceSpeakText", connectVoiceSpeakText);
+        serviceIntent.putExtra("fullVoiceSpeakText", fullVoiceSpeakText);
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

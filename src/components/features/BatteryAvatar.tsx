@@ -94,6 +94,28 @@ export function BatteryAvatar({ level, charging, temperature, onBoost }: Battery
     setTimeout(() => setScale(1), 150);
     setTimeout(() => setShowHeart(false), 800);
 
+    // Dynamic offline audio playback for Feed Boost feature
+    try {
+      const customBoost = localStorage.getItem('custom_audio_boost');
+      if (customBoost) {
+        console.log("Playing custom boost audio!");
+        const audio = new Audio(customBoost);
+        audio.play().catch(e => console.error("Custom boost play failed:", e));
+      } else {
+        const isHindi = localStorage.getItem('use_hindi') === 'true' || 
+                        (typeof navigator !== 'undefined' && navigator.language.startsWith('hi'));
+        const audioSrc = isHindi ? '/audio/booster_voice_hi.mp3' : '/audio/booster_voice.mp3';
+        const audio = new Audio(audioSrc);
+        audio.play().catch(e => {
+          // relative fallback
+          const audioAlt = new Audio(audioSrc.slice(1));
+          audioAlt.play().catch(err => console.log("Default booster voice playback failed:", err));
+        });
+      }
+    } catch (err) {
+      console.warn("Interact play error:", err);
+    }
+
     const friendlyMessages = [
       "Yummy! Thanks for boosting me! 🔋",
       "I feel super energized now! ⚡",

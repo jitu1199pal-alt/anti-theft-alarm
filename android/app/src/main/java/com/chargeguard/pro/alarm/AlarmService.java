@@ -32,6 +32,14 @@ public class AlarmService extends Service {
     private int targetPercentage = 98;
     private int lowBatteryPercentage = 20;
     private boolean vibrateEnabled = true;
+
+    // Added Voice Alert parameters for offline lock screen operations helper
+    private boolean voiceAlertMode = true;
+    private String sound = "Rapid Beep";
+    private boolean connectVoiceSpeakEnabled = true;
+    private boolean fullVoiceSpeakEnabled = true;
+    private String connectVoiceSpeakText = "Thank you for charging me!";
+    private String fullVoiceSpeakText = "Sir, please unplug the charger, battery is full!";
     
     private boolean isAlarmActive = false;
     private String alarmReason = null;
@@ -76,6 +84,12 @@ public class AlarmService extends Service {
         targetPercentage = prefs.getInt("targetPercentage", 98);
         lowBatteryPercentage = prefs.getInt("lowBatteryPercentage", 20);
         vibrateEnabled = prefs.getBoolean("vibrate", true);
+        voiceAlertMode = prefs.getBoolean("voiceAlertMode", true);
+        sound = prefs.getString("sound", "Rapid Beep");
+        connectVoiceSpeakEnabled = prefs.getBoolean("connectVoiceSpeakEnabled", true);
+        fullVoiceSpeakEnabled = prefs.getBoolean("fullVoiceSpeakEnabled", true);
+        connectVoiceSpeakText = prefs.getString("connectVoiceSpeakText", "Thank you for charging me!");
+        fullVoiceSpeakText = prefs.getString("fullVoiceSpeakText", "Sir, please unplug the charger, battery is full!");
 
         if (intent != null) {
             String action = intent.getAction();
@@ -121,6 +135,24 @@ public class AlarmService extends Service {
             if (intent.hasExtra("vibrate")) {
                 vibrateEnabled = intent.getBooleanExtra("vibrate", vibrateEnabled);
             }
+            if (intent.hasExtra("voiceAlertMode")) {
+                voiceAlertMode = intent.getBooleanExtra("voiceAlertMode", voiceAlertMode);
+            }
+            if (intent.hasExtra("sound")) {
+                sound = intent.getStringExtra("sound");
+            }
+            if (intent.hasExtra("connectVoiceSpeakEnabled")) {
+                connectVoiceSpeakEnabled = intent.getBooleanExtra("connectVoiceSpeakEnabled", connectVoiceSpeakEnabled);
+            }
+            if (intent.hasExtra("fullVoiceSpeakEnabled")) {
+                fullVoiceSpeakEnabled = intent.getBooleanExtra("fullVoiceSpeakEnabled", fullVoiceSpeakEnabled);
+            }
+            if (intent.hasExtra("connectVoiceSpeakText")) {
+                connectVoiceSpeakText = intent.getStringExtra("connectVoiceSpeakText");
+            }
+            if (intent.hasExtra("fullVoiceSpeakText")) {
+                fullVoiceSpeakText = intent.getStringExtra("fullVoiceSpeakText");
+            }
         }
 
         isFirstCheck = true;
@@ -137,6 +169,12 @@ public class AlarmService extends Service {
                  .putInt("targetPercentage", targetPercentage)
                  .putInt("lowBatteryPercentage", lowBatteryPercentage)
                  .putBoolean("vibrate", vibrateEnabled)
+                 .putBoolean("voiceAlertMode", voiceAlertMode)
+                 .putString("sound", sound)
+                 .putBoolean("connectVoiceSpeakEnabled", connectVoiceSpeakEnabled)
+                 .putBoolean("fullVoiceSpeakEnabled", fullVoiceSpeakEnabled)
+                 .putString("connectVoiceSpeakText", connectVoiceSpeakText)
+                 .putString("fullVoiceSpeakText", fullVoiceSpeakText)
                  .apply();
         } catch (Exception e) {
             e.printStackTrace();
@@ -238,6 +276,11 @@ public class AlarmService extends Service {
 
         // Handle alerts reset states based on charger status
         if (isCharging || Intent.ACTION_POWER_CONNECTED.equals(action)) {
+            if (Intent.ACTION_POWER_CONNECTED.equals(action)) {
+                if (connectVoiceSpeakEnabled) {
+                    playShortGreeting(getPresetAssetPath(connectVoiceSpeakText, false));
+                }
+            }
             wasChargingOnStart = true;
             lowBatteryAlerted = false; // Reset low battery alerted status when charging
         } else if (Intent.ACTION_POWER_DISCONNECTED.equals(action)) {
@@ -306,13 +349,14 @@ public class AlarmService extends Service {
             e.printStackTrace();
         }
 
-        startAlarmSound();
+        startAlarmSound(reason);
         startVibrations();
 
         showAlarmNotification(title, "Unlock/swipe to stop the alarm.");
         launchMainActivity();
 
         if ("theft".equals(reason) || "low".equals(reason)) {
+            int playtimeMs = voiceAlertMode ? 5000 : 3000;
             new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(new Runnable() {
                 @Override
                 public void run() {
@@ -331,7 +375,7 @@ public class AlarmService extends Service {
                         }
                     }
                 }
-            }, 3000); // alarm playtime set to exactly 3 seconds only
+            }, playtimeMs); // alarm playtime set to 5000ms for full voice alert playback or 3000ms for standard tune
         }
     }
 
@@ -349,7 +393,56 @@ public class AlarmService extends Service {
         }
     }
 
-    private void startAlarmSound() {
+    private String getPresetAssetPath(String text, boolean isFull) {
+        if (text == null) return isFull ? "public/audio/professional_full.mp3" : "public/audio/professional_connect.mp3";
+        String tLower = text.toLowerCase();
+        if (tLower.contains("thank") || tLower.contains("professional")) {
+            return isFull ? "public/audio/professional_full.mp3" : "public/audio/professional_connect.mp3";
+        }
+        if (tLower.contains("bhai") || tLower.contains("khana") || tLower.contains("comedy") || tLower.contains("pet khali")) {
+            return isFull ? "public/audio/hindi_comedy_full.mp3" : "public/audio/hindi_comedy_connect.mp3";
+        }
+        if (tLower.contains("quantum") || tLower.contains("tachyon") || tLower.contains("cyber")) {
+            return isFull ? "public/audio/cyber_bot_full.mp3" : "public/audio/cyber_bot_connect.mp3";
+        }
+        if (tLower.contains("onii-chan") || tLower.contains("anime") || tLower.contains("kawaii") || tLower.contains("super full")) {
+            return isFull ? "public/audio/anime_kawaii_full.mp3" : "public/audio/anime_kawaii_connect.mp3";
+        }
+        return isFull ? "public/audio/professional_full.mp3" : "public/audio/professional_connect.mp3";
+    }
+
+    private void playShortGreeting(String assetPath) {
+        try {
+            final MediaPlayer mp = new MediaPlayer();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                mp.setAudioAttributes(
+                    new AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                );
+            } else {
+                mp.setAudioStreamType(AudioManager.STREAM_MUSIC);
+            }
+            try (android.content.res.AssetFileDescriptor afd = getAssets().openFd(assetPath)) {
+                mp.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
+            }
+            mp.prepare();
+            mp.start();
+            mp.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+                @Override
+                public void onCompletion(MediaPlayer mediaPlayer2) {
+                    try {
+                        mp.release();
+                    } catch (Exception e) {}
+                }
+            });
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void startAlarmSound(String reason) {
         if (mediaPlayer != null) {
             return;
         }
@@ -361,23 +454,47 @@ public class AlarmService extends Service {
                 mediaPlayer.setAudioAttributes(
                     new AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                         .build()
                 );
             } else {
                 mediaPlayer.setAudioStreamType(AudioManager.STREAM_ALARM);
             }
             
-            // Set data source to the raw resource
-            try (android.content.res.AssetFileDescriptor afd = getResources().openRawResourceFd(R.raw.alarm)) {
-                if (afd != null) {
-                    mediaPlayer.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
-                } else {
-                    return; // Fail safe
+            boolean playedPath = false;
+            if (voiceAlertMode) {
+                String assetPath = null;
+                if ("theft".equals(reason) || "low".equals(reason)) {
+                    // "Please connect charger" voice warning
+                    assetPath = "public/audio/battery_exhausted.mp3";
+                } else if ("full".equals(reason)) {
+                    if (fullVoiceSpeakEnabled) {
+                        assetPath = getPresetAssetPath(fullVoiceSpeakText, true);
+                    }
                 }
-            } catch (Exception e) {
-                e.printStackTrace();
-                return;
+                
+                if (assetPath != null) {
+                    try (android.content.res.AssetFileDescriptor afd = getAssets().openFd(assetPath)) {
+                        mediaPlayer.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
+                        playedPath = true;
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+            
+            if (!playedPath) {
+                // Set data source to the raw resource (standard buzzer beep)
+                try (android.content.res.AssetFileDescriptor afd = getResources().openRawResourceFd(R.raw.alarm)) {
+                    if (afd != null) {
+                        mediaPlayer.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
+                    } else {
+                        return; // Fail safe
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    return;
+                }
             }
 
             mediaPlayer.setLooping(true);
@@ -556,6 +673,12 @@ public class AlarmService extends Service {
                 restartServiceIntent.putExtra("targetPercentage", targetPercentage);
                 restartServiceIntent.putExtra("lowBatteryPercentage", lowBatteryPercentage);
                 restartServiceIntent.putExtra("vibrate", vibrateEnabled);
+                restartServiceIntent.putExtra("voiceAlertMode", voiceAlertMode);
+                restartServiceIntent.putExtra("sound", sound);
+                restartServiceIntent.putExtra("connectVoiceSpeakEnabled", connectVoiceSpeakEnabled);
+                restartServiceIntent.putExtra("fullVoiceSpeakEnabled", fullVoiceSpeakEnabled);
+                restartServiceIntent.putExtra("connectVoiceSpeakText", connectVoiceSpeakText);
+                restartServiceIntent.putExtra("fullVoiceSpeakText", fullVoiceSpeakText);
                 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     try {
@@ -599,6 +722,12 @@ public class AlarmService extends Service {
             restartServiceIntent.putExtra("targetPercentage", targetPercentage);
             restartServiceIntent.putExtra("lowBatteryPercentage", lowBatteryPercentage);
             restartServiceIntent.putExtra("vibrate", vibrateEnabled);
+            restartServiceIntent.putExtra("voiceAlertMode", voiceAlertMode);
+            restartServiceIntent.putExtra("sound", sound);
+            restartServiceIntent.putExtra("connectVoiceSpeakEnabled", connectVoiceSpeakEnabled);
+            restartServiceIntent.putExtra("fullVoiceSpeakEnabled", fullVoiceSpeakEnabled);
+            restartServiceIntent.putExtra("connectVoiceSpeakText", connectVoiceSpeakText);
+            restartServiceIntent.putExtra("fullVoiceSpeakText", fullVoiceSpeakText);
 
             PendingIntent restartServicePendingIntent;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
