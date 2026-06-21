@@ -387,8 +387,8 @@ public class AlarmService extends Service {
         showAlarmNotification(title, "Unlock/swipe to stop the alarm.");
         launchMainActivity();
 
-        if ("theft".equals(reason) || "low".equals(reason)) {
-            int playtimeMs = voiceAlertMode ? 10000 : 3000;
+        if ("low".equals(reason)) {
+            int playtimeMs = 15000; // Plays low battery alarm for 15 seconds
             new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(new Runnable() {
                 @Override
                 public void run() {
@@ -399,7 +399,7 @@ public class AlarmService extends Service {
                         AlarmServicePlugin.setAlarmState(false, null);
                     }
                 }
-            }, playtimeMs); // alarm playtime set to 10000ms for full voice alert playback or 3000ms for standard tune
+            }, playtimeMs);
         }
     }
 
@@ -562,16 +562,30 @@ public class AlarmService extends Service {
             }
             
             if (!playedPath) {
-                // Set data source to the raw resource (standard buzzer beep)
-                try (android.content.res.AssetFileDescriptor afd = getResources().openRawResourceFd(R.raw.alarm)) {
-                    if (afd != null) {
+                // Play the high-quality electronic alert tune "public/audio/system_alert.mp3"
+                try {
+                    String assetPath = "public/audio/system_alert.mp3";
+                    try (android.content.res.AssetFileDescriptor afd = getAssets().openFd(assetPath)) {
                         mediaPlayer.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
-                    } else {
-                        return; // Fail safe
+                        playedPath = true;
                     }
                 } catch (Exception e) {
                     e.printStackTrace();
-                    return;
+                }
+
+                if (!playedPath) {
+                    // Set data source to the raw resource (standard buzzer beep) as fallback
+                    try (android.content.res.AssetFileDescriptor afd = getResources().openRawResourceFd(R.raw.alarm)) {
+                        if (afd != null) {
+                            mediaPlayer.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
+                            playedPath = true;
+                        } else {
+                            return; // Fail safe
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        return;
+                    }
                 }
             }
 
