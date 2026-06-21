@@ -52,6 +52,7 @@ public class AlarmService extends Service {
     private boolean targetReachedAlerted = false;
 
     private MediaPlayer mediaPlayer = null;
+    private MediaPlayer greetingMediaPlayer = null;
     private Vibrator vibrator = null;
     private PowerManager.WakeLock wakeLock = null;
 
@@ -316,6 +317,10 @@ public class AlarmService extends Service {
             hadChargerUnplugged = false; // Reset unplugged flag so we can trigger anti-theft again later!
         } else if (Intent.ACTION_POWER_DISCONNECTED.equals(action)) {
             targetReachedAlerted = false; // Reset target reached status when charger unplugged
+            if (voiceAlertMode && !theftAlarmEnabled) {
+                boolean isHindi = isHindiLanguage();
+                playShortGreeting(isHindi ? "public/audio/charger_disconnected_hi.mp3" : "public/audio/charger_disconnected.mp3");
+            }
         }
 
         // Dynamic thresholds based soft reset states
@@ -441,9 +446,23 @@ public class AlarmService extends Service {
         return false;
     }
 
-    private void playShortGreeting(String assetPath) {
+    private synchronized void playShortGreeting(final String assetPath) {
         try {
+            if (greetingMediaPlayer != null) {
+                try {
+                    if (greetingMediaPlayer.isPlaying()) {
+                        greetingMediaPlayer.stop();
+                    }
+                    greetingMediaPlayer.release();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+                greetingMediaPlayer = null;
+            }
+
             final MediaPlayer mp = new MediaPlayer();
+            greetingMediaPlayer = mp;
+            
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 mp.setAudioAttributes(
                     new AudioAttributes.Builder()
@@ -462,13 +481,40 @@ public class AlarmService extends Service {
             mp.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
                 @Override
                 public void onCompletion(MediaPlayer mediaPlayer2) {
-                    try {
-                        mp.release();
-                    } catch (Exception e) {}
+                    synchronized (AlarmService.this) {
+                        try {
+                            if (greetingMediaPlayer == mp) {
+                                mp.release();
+                                greetingMediaPlayer = null;
+                            } else {
+                                mp.release();
+                            }
+                        } catch (Exception e) {}
+                    }
+                }
+            });
+            mp.setOnErrorListener(new MediaPlayer.OnErrorListener() {
+                @Override
+                public boolean onError(MediaPlayer mediaPlayer2, int what, int extra) {
+                    synchronized (AlarmService.this) {
+                        try {
+                            if (greetingMediaPlayer == mp) {
+                                mp.release();
+                                greetingMediaPlayer = null;
+                            } else {
+                                mp.release();
+                            }
+                        } catch (Exception e) {}
+                    }
+                    return true;
                 }
             });
         } catch (Exception e) {
             e.printStackTrace();
+            if (greetingMediaPlayer != null) {
+                try { greetingMediaPlayer.release(); } catch (Exception ex) {}
+                greetingMediaPlayer = null;
+            }
         }
     }
 
@@ -541,6 +587,11 @@ public class AlarmService extends Service {
             }
         } catch (Exception e) {
             e.printStackTrace();
+            if (mediaPlayer != null) {
+                try {
+                    mediaPlayer.release();
+                } catch (Exception ex) {}
+            }
             mediaPlayer = null;
         }
     }
