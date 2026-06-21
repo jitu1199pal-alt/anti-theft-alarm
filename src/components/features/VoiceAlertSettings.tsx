@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { ChevronLeft, Volume2, Play, CheckCircle2, ShieldCheck, Speech } from 'lucide-react';
-import { AlarmConfig } from '../../types';
+import { AlarmConfig, AlarmSound } from '../../types';
 import { triggerInterstitialAd } from '../GoogleAdMob';
 
 interface VoiceAlertSettingsProps {
@@ -33,6 +33,88 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
     return () => clearInterval(interval);
   }, [activeAdFor]);
 
+  const playBuiltInTone = (toneName: string) => {
+    // Stop any existing web audio or voice previews
+    if ((window as any)._activePreviewAudio) {
+      try {
+        (window as any)._activePreviewAudio.pause();
+      } catch (e) {}
+      (window as any)._activePreviewAudio = null;
+    }
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const audioCtx = new AudioCtx();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      const vol = (config.volume / 100) * 1.5;
+
+      switch(toneName) {
+        case 'Emergency Siren':
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(1600, audioCtx.currentTime + 0.4);
+          osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.8);
+          gain.gain.setValueAtTime(0.01, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(vol * 2.5, audioCtx.currentTime + 0.2);
+          break;
+        case 'Radar Alert':
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(1760, audioCtx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(3520, audioCtx.currentTime + 0.8);
+          gain.gain.setValueAtTime(0.01, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(vol * 2.5, audioCtx.currentTime + 0.1);
+          break;
+        case 'Cyber Pulse':
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(1500, audioCtx.currentTime);
+          osc.frequency.setValueAtTime(500, audioCtx.currentTime + 0.2);
+          osc.frequency.setValueAtTime(2000, audioCtx.currentTime + 0.4);
+          osc.frequency.setValueAtTime(800, audioCtx.currentTime + 0.6);
+          gain.gain.setValueAtTime(vol * 1.8, audioCtx.currentTime);
+          break;
+        case 'Rapid Beep':
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(3000, audioCtx.currentTime);
+          gain.gain.setValueAtTime(vol * 2.0, audioCtx.currentTime);
+          gain.gain.setValueAtTime(0.01, audioCtx.currentTime + 0.1);
+          gain.gain.setValueAtTime(vol * 2.0, audioCtx.currentTime + 0.2);
+          gain.gain.setValueAtTime(0.01, audioCtx.currentTime + 0.3);
+          gain.gain.setValueAtTime(vol * 2.0, audioCtx.currentTime + 0.4);
+          gain.gain.setValueAtTime(0.01, audioCtx.currentTime + 0.5);
+          break;
+        case 'High Energy':
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(60, audioCtx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(6000, audioCtx.currentTime + 0.8);
+          gain.gain.setValueAtTime(0.01, audioCtx.currentTime);
+          gain.gain.linearRampToValueAtTime(vol * 2.5, audioCtx.currentTime + 0.4);
+          break;
+        default: // Classic Alarm
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(2040, audioCtx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(1020, audioCtx.currentTime + 0.4);
+          gain.gain.setValueAtTime(vol * 1.5, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.8);
+          break;
+      }
+
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      setTimeout(() => {
+        osc.stop();
+        audioCtx.close();
+      }, 1000);
+    } catch(err) {
+      console.warn("Chime preview error:", err);
+    }
+  };
+
   const playTestSound = (type: 'theft' | 'low') => {
     // 1. Clear any active Audio object previews first
     if ((window as any)._activePreviewAudio) {
@@ -56,6 +138,15 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
     }
 
     setTestingSound(type);
+
+    // If we are in built-in Tone mode, play the selected tone!
+    if (!config.voiceAlert) {
+      playBuiltInTone(config.sound || 'Rapid Beep');
+      setTimeout(() => {
+        setTestingSound(null);
+      }, 1000);
+      return;
+    }
 
     // 3. Play Custom Audio if available
     let customKey = type === 'theft' ? 'custom_audio_theft' : 'custom_audio_low';
@@ -611,7 +702,14 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
           <button
             onClick={() => {
               triggerInterstitialAd(() => {
-                setConfig(prev => ({ ...prev, voiceAlert: !prev.voiceAlert }));
+                const nextVal = !config.voiceAlert;
+                setConfig(prev => ({ ...prev, voiceAlert: nextVal }));
+                if (!nextVal) {
+                  // Play a quick melody preview instantly
+                  setTimeout(() => {
+                    playBuiltInTone(config.sound || 'Rapid Beep');
+                  }, 100);
+                }
               }, 'security');
             }}
             className="w-14 h-7 bg-[#00FF88] rounded-full relative transition-all cursor-pointer shadow-[0_0_15px_rgba(0,255,136,0.3)] flex items-center shrink-0"
@@ -634,80 +732,126 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
 
       {/* 🗣️ Audio Preview Playback */}
       <div className="bento-card p-5 bg-gradient-to-br from-slate-950 to-slate-900 border border-white/5 rounded-2xl space-y-4">
-        <div>
-          <span className="text-[9px] bg-[#00FF88]/15 text-[#00FF88] font-extrabold px-2 py-0.5 rounded border border-[#00FF88]/20">VOICE CUSTOMIZER</span>
-          <h2 className="text-xs font-black text-white mt-1.5 flex items-center gap-1.5 uppercase tracking-wider">
-            🚨 Anti-Theft & 20% Alarm Voice Settings
-          </h2>
-          <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
-            Preview the offline high-quality alarm sound effects that play when the theft alarm goes off or battery falls to 20%.
-          </p>
-        </div>
-
-        {/* Player Controls */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-          {/* Anti-Theft Alarm Player */}
-          <div className="p-3 bg-slate-900/40 border border-white/5 rounded-xl flex items-center justify-between gap-2.5">
-            <div className="text-left flex-1 min-w-0">
-              <span className="text-[8px] uppercase tracking-wider text-rose-400 font-extrabold block">🚨 Theft Alarm</span>
-              <p className="text-[10px] text-white font-semibold truncate">
-                Charger Disconnected
-              </p>
-              <p className="text-[9px] text-slate-400 truncate">
-                Please connect charger!
-              </p>
-            </div>
-            <button
-              onClick={() => playTestSound('theft')}
-              className={`p-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0 ${
-                testingSound === 'theft'
-                  ? 'bg-rose-500/20 text-rose-400 animate-pulse border border-rose-500/30'
-                  : 'bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/10'
-              }`}
-            >
-              {testingSound === 'theft' ? (
-                <div className="flex gap-0.5 items-end justify-center w-4 h-4">
-                  <span className="w-0.5 bg-rose-400 animate-[bounce_1s_infinite_100ms] h-2"></span>
-                  <span className="w-0.5 bg-rose-400 animate-[bounce_1s_infinite_300ms] h-4"></span>
-                  <span className="w-0.5 bg-rose-400 animate-[bounce_1s_infinite_200ms] h-3"></span>
-                </div>
-              ) : (
-                <Play size={12} className="fill-current" />
-              )}
-            </button>
+        {!config.voiceAlert ? (
+          <div>
+            <span className="text-[9px] bg-[#00FF88]/15 text-[#00FF88] font-extrabold px-2 py-0.5 rounded border border-[#00FF88]/20">🎵 BUILT-IN TONES SELECTOR</span>
+            <h2 className="text-xs font-black text-white mt-1.5 flex items-center gap-1.5 uppercase tracking-wider">
+              Selected Tone: <span className="text-[#00FF88]">{config.sound || 'Rapid Beep'}</span>
+            </h2>
+            <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+              Choose the synthesis tone that will play for Anti-theft, 20% critical battery, and target charging limit. Clicking a tone will play an immediate high-quality preview.
+            </p>
           </div>
-
-          {/* 20% Battery Alarm Player */}
-          <div className="p-3 bg-slate-900/40 border border-white/5 rounded-xl flex items-center justify-between gap-2.5">
-            <div className="text-left flex-1 min-w-0">
-              <span className="text-[8px] uppercase tracking-wider text-[#00FF88] font-extrabold block">🔋 20% Low Alarm</span>
-              <p className="text-[10px] text-white font-semibold truncate">
-                Battery Exhausted
-              </p>
-              <p className="text-[9px] text-slate-400 truncate">
-                Please connect charger!
-              </p>
-            </div>
-            <button
-              onClick={() => playTestSound('low')}
-              className={`p-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0 ${
-                testingSound === 'low'
-                  ? 'bg-[#00FF88]/20 text-[#00FF88] animate-pulse border border-[#00FF88]/30'
-                  : 'bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/10'
-              }`}
-            >
-              {testingSound === 'low' ? (
-                <div className="flex gap-0.5 items-end justify-center w-4 h-4">
-                  <span className="w-0.5 bg-[#00FF88] animate-[bounce_1s_infinite_100ms] h-2"></span>
-                  <span className="w-0.5 bg-[#00FF88] animate-[bounce_1s_infinite_300ms] h-4"></span>
-                  <span className="w-0.5 bg-[#00FF88] animate-[bounce_1s_infinite_200ms] h-3"></span>
-                </div>
-              ) : (
-                <Play size={12} className="fill-current" />
-              )}
-            </button>
+        ) : (
+          <div>
+            <span className="text-[9px] bg-[#00FF88]/15 text-[#00FF88] font-extrabold px-2 py-0.5 rounded border border-[#00FF88]/20">VOICE CUSTOMIZER</span>
+            <h2 className="text-xs font-black text-white mt-1.5 flex items-center gap-1.5 uppercase tracking-wider">
+              🚨 Anti-Theft & 20% Alarm Voice Settings
+            </h2>
+            <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+              Preview the offline high-quality alarm sound effects that play when the theft alarm goes off or battery falls to 20%.
+            </p>
           </div>
-        </div>
+        )}
+
+        {!config.voiceAlert ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+            {Object.values(AlarmSound).map(soundVal => (
+              <button
+                key={soundVal}
+                onClick={() => {
+                  setConfig(prev => ({ ...prev, sound: soundVal }));
+                  playBuiltInTone(soundVal);
+                }}
+                className={`p-3 rounded-2xl border text-left flex items-center justify-between transition-all cursor-pointer hover:scale-[1.01] active:scale-95 ${
+                  config.sound === soundVal 
+                    ? 'bg-[#00FF88]/10 border-[#00FF88]/30 text-white shadow-[0_0_15px_rgba(0,255,136,0.1)]' 
+                    : 'bg-slate-900/60 border-white/5 hover:bg-slate-900 text-slate-400'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${config.sound === soundVal ? 'bg-[#00FF88] animate-pulse shadow-[0_0_8px_#00FF88]' : 'bg-slate-600'}`} />
+                  <span className="text-xs font-black uppercase tracking-wider truncate">{soundVal}</span>
+                </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setConfig(prev => ({ ...prev, sound: soundVal }));
+                    playBuiltInTone(soundVal);
+                  }}
+                  className="p-1 px-2.5 bg-[#00FF88]/15 hover:bg-[#00FF88]/25 text-[9px] font-black uppercase tracking-widest text-[#00FF88] border border-[#00FF88]/35 rounded-xl transition-all cursor-pointer"
+                >
+                  Play
+                </button>
+              </button>
+            ))}
+          </div>
+        ) : (
+          /* Player Controls */
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            {/* Anti-Theft Alarm Player */}
+            <div className="p-3 bg-slate-900/40 border border-white/5 rounded-xl flex items-center justify-between gap-2.5">
+              <div className="text-left flex-1 min-w-0">
+                <span className="text-[8px] uppercase tracking-wider text-rose-400 font-extrabold block">🚨 Theft Alarm</span>
+                <p className="text-[10px] text-white font-semibold truncate">
+                  Charger Disconnected
+                </p>
+                <p className="text-[9px] text-slate-400 truncate">
+                  Please connect charger!
+                </p>
+              </div>
+              <button
+                onClick={() => playTestSound('theft')}
+                className={`p-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0 ${
+                  testingSound === 'theft'
+                    ? 'bg-rose-500/20 text-rose-400 animate-pulse border border-rose-500/30'
+                    : 'bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/10'
+                }`}
+              >
+                {testingSound === 'theft' ? (
+                  <div className="flex gap-0.5 items-end justify-center w-4 h-4">
+                    <span className="w-0.5 bg-rose-400 animate-[bounce_1s_infinite_100ms] h-2"></span>
+                    <span className="w-0.5 bg-rose-400 animate-[bounce_1s_infinite_300ms] h-4"></span>
+                    <span className="w-0.5 bg-rose-400 animate-[bounce_1s_infinite_200ms] h-3"></span>
+                  </div>
+                ) : (
+                  <Play size={12} className="fill-current" />
+                )}
+              </button>
+            </div>
+
+            {/* 20% Battery Alarm Player */}
+            <div className="p-3 bg-slate-900/40 border border-white/5 rounded-xl flex items-center justify-between gap-2.5">
+              <div className="text-left flex-1 min-w-0">
+                <span className="text-[8px] uppercase tracking-wider text-[#00FF88] font-extrabold block">🔋 20% Low Alarm</span>
+                <p className="text-[10px] text-white font-semibold truncate">
+                  Battery Exhausted
+                </p>
+                <p className="text-[9px] text-slate-400 truncate">
+                  Please connect charger!
+                </p>
+              </div>
+              <button
+                onClick={() => playTestSound('low')}
+                className={`p-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0 ${
+                  testingSound === 'low'
+                    ? 'bg-[#00FF88]/20 text-[#00FF88] animate-pulse border border-[#00FF88]/30'
+                    : 'bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/10'
+                }`}
+              >
+                {testingSound === 'low' ? (
+                  <div className="flex gap-0.5 items-end justify-center w-4 h-4">
+                    <span className="w-0.5 bg-[#00FF88] animate-[bounce_1s_infinite_100ms] h-2"></span>
+                    <span className="w-0.5 bg-[#00FF88] animate-[bounce_1s_infinite_300ms] h-4"></span>
+                    <span className="w-0.5 bg-[#00FF88] animate-[bounce_1s_infinite_200ms] h-3"></span>
+                  </div>
+                ) : (
+                  <Play size={12} className="fill-current" />
+                )}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Main Switch Panel */}

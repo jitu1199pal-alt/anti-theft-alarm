@@ -12,7 +12,9 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.media.AudioAttributes;
+import android.media.AudioFormat;
 import android.media.AudioManager;
+import android.media.AudioTrack;
 import android.media.MediaPlayer;
 import android.media.RingtoneManager;
 import android.net.Uri;
@@ -53,6 +55,9 @@ public class AlarmService extends Service {
 
     private MediaPlayer mediaPlayer = null;
     private MediaPlayer greetingMediaPlayer = null;
+    private AudioTrack audioTrack = null;
+    private Thread synthThread = null;
+    private volatile boolean isSynthRunning = false;
     private Vibrator vibrator = null;
     private PowerManager.WakeLock wakeLock = null;
 
@@ -317,7 +322,7 @@ public class AlarmService extends Service {
             hadChargerUnplugged = false; // Reset unplugged flag so we can trigger anti-theft again later!
         } else if (Intent.ACTION_POWER_DISCONNECTED.equals(action)) {
             targetReachedAlerted = false; // Reset target reached status when charger unplugged
-            if (voiceAlertMode && !theftAlarmEnabled) {
+            if (!theftAlarmEnabled) {
                 boolean isHindi = isHindiLanguage();
                 playShortGreeting(isHindi ? "public/audio/charger_disconnected_hi.mp3" : "public/audio/charger_disconnected.mp3");
             }
@@ -519,26 +524,26 @@ public class AlarmService extends Service {
     }
 
     private void startAlarmSound(String reason) {
-        if (mediaPlayer != null) {
+        if (isSynthRunning || mediaPlayer != null) {
             return;
         }
         try {
-            mediaPlayer = new MediaPlayer();
-            
-            // Bypass silent mode by using Alarm stream
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                mediaPlayer.setAudioAttributes(
-                    new AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .build()
-                );
-            } else {
-                mediaPlayer.setAudioStreamType(AudioManager.STREAM_ALARM);
-            }
-            
             boolean playedPath = false;
             if (voiceAlertMode) {
+                mediaPlayer = new MediaPlayer();
+                
+                // Bypass silent mode by using Alarm stream
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    mediaPlayer.setAudioAttributes(
+                        new AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_ALARM)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build()
+                    );
+                } else {
+                    mediaPlayer.setAudioStreamType(AudioManager.STREAM_ALARM);
+                }
+                
                 String assetPath = null;
                 boolean isHindi = isHindiLanguage();
                 if ("theft".equals(reason)) {
@@ -562,31 +567,22 @@ public class AlarmService extends Service {
             }
             
             if (!playedPath) {
-                // Play the high-quality electronic alert tune "public/audio/system_alert.mp3"
-                try {
-                    String assetPath = "public/audio/system_alert.mp3";
-                    try (android.content.res.AssetFileDescriptor afd = getAssets().openFd(assetPath)) {
-                        mediaPlayer.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
-                        playedPath = true;
-                    }
-                } catch (Exception e) {
-                    e.printStackTrace();
+                if (mediaPlayer != null) {
+                    try {
+                        mediaPlayer.release();
+                    } catch (Exception e) {}
+                    mediaPlayer = null;
                 }
-
-                if (!playedPath) {
-                    // Set data source to the raw resource (standard buzzer beep) as fallback
-                    try (android.content.res.AssetFileDescriptor afd = getResources().openRawResourceFd(R.raw.alarm)) {
-                        if (afd != null) {
-                            mediaPlayer.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
-                            playedPath = true;
-                        } else {
-                            return; // Fail safe
-                        }
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                        return;
-                    }
+                
+                // Start synthesized alarm tone based on user's selected built-in sound
+                startSynthesizedAlarm(sound);
+                
+                AudioManager audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+                if (audioManager != null) {
+                    int maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM);
+                    audioManager.setStreamVolume(AudioManager.STREAM_ALARM, maxVol, 0);
                 }
+                return;
             }
 
             mediaPlayer.setLooping(true);
@@ -633,6 +629,7 @@ public class AlarmService extends Service {
     }
 
     private void stopAlarmSound() {
+        stopSynthesizedAlarm();
         if (mediaPlayer != null) {
             try {
                 mediaPlayer.stop();
@@ -642,6 +639,179 @@ public class AlarmService extends Service {
         }
         if (vibrator != null) {
             try { vibrator.cancel(); } catch (Exception e) { e.printStackTrace(); }
+        }
+    }
+
+    private void startSynthesizedAlarm(final String soundName) {
+        stopSynthesizedAlarm();
+        isSynthRunning = true;
+        synthThread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                int sampleRate = 44100;
+                int minBufferSize = AudioTrack.getMinBufferSize(
+                    sampleRate,
+                    AudioFormat.CHANNEL_OUT_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT
+                );
+                if (minBufferSize == AudioTrack.ERROR || minBufferSize == AudioTrack.ERROR_BAD_VALUE) {
+                    minBufferSize = 44100;
+                }
+                
+                AudioTrack track = null;
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        track = new AudioTrack(
+                            new AudioAttributes.Builder()
+                                .setUsage(AudioAttributes.USAGE_ALARM)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                                .build(),
+                            new AudioFormat.Builder()
+                                .setSampleRate(sampleRate)
+                                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                                .build(),
+                            minBufferSize * 2,
+                            AudioTrack.MODE_STREAM,
+                            AudioManager.AUDIO_SESSION_ID_GENERATE
+                        );
+                    } else {
+                        track = new AudioTrack(
+                            AudioManager.STREAM_ALARM,
+                            sampleRate,
+                            AudioFormat.CHANNEL_CONFIGURATION_MONO,
+                            AudioFormat.ENCODING_PCM_16BIT,
+                            minBufferSize * 2,
+                            AudioTrack.MODE_STREAM
+                        );
+                    }
+                    track.play();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    return;
+                }
+                
+                audioTrack = track;
+                
+                short[] buffer = new short[2048];
+                double sampleIndex = 0;
+                double phase = 0;
+                
+                while (isSynthRunning) {
+                    for (int i = 0; i < buffer.length; i++) {
+                        double t = sampleIndex / (double) sampleRate;
+                        double freq = 1000;
+                        double amp = 0.8;
+                        
+                        if ("Emergency Siren".equals(soundName)) {
+                            double cycle = (sampleIndex % sampleRate) / (double) sampleRate;
+                            freq = 600 + 800 * (0.5 + 0.5 * Math.sin(2 * Math.PI * cycle));
+                            amp = 0.8;
+                        } else if ("Radar Alert".equals(soundName)) {
+                            double duration = 0.8 * sampleRate;
+                            double modIndex = sampleIndex % duration;
+                            double progress = modIndex / duration;
+                            freq = 440 + 2500 * (progress * progress);
+                            amp = 0.8 * (1.0 - progress);
+                        } else if ("Cyber Pulse".equals(soundName)) {
+                            double duration = 0.8 * sampleRate;
+                            double modIndex = sampleIndex % duration;
+                            double step = modIndex / (0.2 * sampleRate);
+                            if (step < 1) {
+                                freq = 1500;
+                            } else if (step < 2) {
+                                freq = 500;
+                            } else if (step < 3) {
+                                freq = 2000;
+                            } else {
+                                freq = 800;
+                            }
+                            amp = 0.7;
+                        } else if ("Rapid Beep".equals(soundName)) {
+                            double duration = 0.2 * sampleRate;
+                            double modIndex = sampleIndex % duration;
+                            if (modIndex < 0.1 * sampleRate) {
+                                freq = 2500;
+                                amp = 0.8;
+                            } else {
+                                freq = 0;
+                                amp = 0.0;
+                            }
+                        } else if ("High Energy".equals(soundName)) {
+                            double duration = 0.8 * sampleRate;
+                            double modIndex = sampleIndex % duration;
+                            double progress = modIndex / duration;
+                            freq = 60 + 3940 * progress;
+                            amp = 0.8;
+                        } else if ("Classic Alarm".equals(soundName)) {
+                            double duration = 0.4 * sampleRate;
+                            double modIndex = sampleIndex % duration;
+                            if (modIndex < 0.2 * sampleRate) {
+                                freq = 1000;
+                            } else {
+                                freq = 1500;
+                            }
+                            amp = 0.8;
+                        } else {
+                            double duration = 0.4 * sampleRate;
+                            double modIndex = sampleIndex % duration;
+                            if (modIndex < 0.2 * sampleRate) {
+                                freq = 1200;
+                                amp = 0.8;
+                            } else {
+                                freq = 0;
+                                amp = 0.0;
+                            }
+                        }
+                        
+                        if (amp > 0 && freq > 0) {
+                            phase += (2 * Math.PI * freq) / (double) sampleRate;
+                            if (phase > 2 * Math.PI) {
+                                phase -= 2 * Math.PI;
+                            }
+                            double waveValue;
+                            if ("Radar Alert".equals(soundName)) {
+                                waveValue = Math.sin(phase);
+                            } else {
+                                waveValue = (Math.sin(phase) >= 0) ? 1.0 : -1.0;
+                            }
+                            buffer[i] = (short) (waveValue * amp * 32767.0);
+                        } else {
+                            buffer[i] = 0;
+                        }
+                        
+                        sampleIndex++;
+                    }
+                    
+                    try {
+                        track.write(buffer, 0, buffer.length);
+                    } catch (Exception e) {
+                        break;
+                    }
+                }
+                
+                try {
+                    track.stop();
+                    track.release();
+                } catch (Exception e) {}
+            }
+        });
+        synthThread.start();
+    }
+
+    private synchronized void stopSynthesizedAlarm() {
+        isSynthRunning = false;
+        if (synthThread != null) {
+            try {
+                synthThread.join(500);
+            } catch (Exception e) {}
+            synthThread = null;
+        }
+        if (audioTrack != null) {
+            try {
+                audioTrack.release();
+            } catch (Exception e) {}
+            audioTrack = null;
         }
     }
 
