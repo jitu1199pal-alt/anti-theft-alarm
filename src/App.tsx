@@ -4377,7 +4377,7 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
         console.log("Playing custom alarm audio loop:", customAudio);
         voiceAudio = new Audio(customAudio);
         voiceAudio.volume = config.volume / 100;
-        voiceAudio.loop = !isLow; // Do not loop low battery custom voice alarms
+        voiceAudio.loop = isFull; // Only loop full battery custom voice alarms
         voiceAudio.play().catch(e => {
           console.warn("Custom alarm voice MP3 playback failed:", e);
         });
@@ -4400,7 +4400,7 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
         const relativeSrc = audioSrc.startsWith('/') ? audioSrc.slice(1) : audioSrc;
         voiceAudio = new Audio(relativeSrc);
         voiceAudio.volume = config.volume / 100;
-        voiceAudio.loop = !isLow; // Do not loop low battery preset voice alarms
+        voiceAudio.loop = isFull; // Only loop full battery preset voice alarms
         voiceAudio.play().catch(e => {
           console.warn("Preset voice alert MP3 play failed:", e);
         });

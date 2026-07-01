@@ -392,8 +392,8 @@ public class AlarmService extends Service {
         showAlarmNotification(title, "Unlock/swipe to stop the alarm.");
         launchMainActivity();
 
-        if ("low".equals(reason)) {
-            int playtimeMs = 15000; // Plays low battery alarm for 15 seconds
+        if ("low".equals(reason) || "theft".equals(reason)) {
+            int playtimeMs = 2500; // Plays low battery and theft alarm for exactly 2.5 seconds (2500ms)
             new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(new Runnable() {
                 @Override
                 public void run() {
@@ -425,17 +425,17 @@ public class AlarmService extends Service {
     private String getPresetAssetPath(String text, boolean isFull) {
         if (text == null) return isFull ? "public/audio/professional_full.mp3" : "public/audio/professional_connect.mp3";
         String tLower = text.toLowerCase();
-        if (tLower.contains("thank") || tLower.contains("professional")) {
-            return isFull ? "public/audio/professional_full.mp3" : "public/audio/professional_connect.mp3";
+        if (tLower.contains("onii-chan") || tLower.contains("anime") || tLower.contains("kawaii") || tLower.contains("super full") || tLower.contains("energy") || tLower.contains("best")) {
+            return isFull ? "public/audio/anime_kawaii_full.mp3" : "public/audio/anime_kawaii_connect.mp3";
         }
-        if (tLower.contains("bhai") || tLower.contains("khana") || tLower.contains("comedy") || tLower.contains("pet khali")) {
+        if (tLower.contains("bhai") || tLower.contains("khana") || tLower.contains("comedy") || tLower.contains("pet khali") || tLower.contains("nikaalo") || tLower.contains("bol raha hu") || tLower.contains("mil gaya")) {
             return isFull ? "public/audio/hindi_comedy_full.mp3" : "public/audio/hindi_comedy_connect.mp3";
         }
-        if (tLower.contains("quantum") || tLower.contains("tachyon") || tLower.contains("cyber")) {
+        if (tLower.contains("quantum") || tLower.contains("tachyon") || tLower.contains("cyber") || tLower.contains("saturated") || tLower.contains("couplings") || tLower.contains("cells")) {
             return isFull ? "public/audio/cyber_bot_full.mp3" : "public/audio/cyber_bot_connect.mp3";
         }
-        if (tLower.contains("onii-chan") || tLower.contains("anime") || tLower.contains("kawaii") || tLower.contains("super full")) {
-            return isFull ? "public/audio/anime_kawaii_full.mp3" : "public/audio/anime_kawaii_connect.mp3";
+        if (tLower.contains("thank") || tLower.contains("professional")) {
+            return isFull ? "public/audio/professional_full.mp3" : "public/audio/professional_connect.mp3";
         }
         return isFull ? "public/audio/professional_full.mp3" : "public/audio/professional_connect.mp3";
     }
@@ -585,7 +585,7 @@ public class AlarmService extends Service {
                 return;
             }
 
-            mediaPlayer.setLooping(true);
+            mediaPlayer.setLooping("full".equals(reason));
             mediaPlayer.prepare();
             mediaPlayer.start();
             
