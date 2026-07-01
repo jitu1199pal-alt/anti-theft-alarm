@@ -392,7 +392,7 @@ public class AlarmService extends Service {
         showAlarmNotification(title, "Unlock/swipe to stop the alarm.");
         launchMainActivity();
 
-        if ("low".equals(reason) || "theft".equals(reason)) {
+        if (!voiceAlertMode && ("low".equals(reason) || "theft".equals(reason))) {
             int playtimeMs = 2500; // Plays low battery and theft alarm for exactly 2.5 seconds (2500ms)
             new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(new Runnable() {
                 @Override
@@ -586,6 +586,21 @@ public class AlarmService extends Service {
             }
 
             mediaPlayer.setLooping("full".equals(reason));
+            if (!"full".equals(reason)) {
+                mediaPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+                    @Override
+                    public void onCompletion(MediaPlayer mp) {
+                        synchronized (AlarmService.this) {
+                            if (isAlarmActive && (reason.equals(alarmReason))) {
+                                stopAlarmSound();
+                                isAlarmActive = false;
+                                alarmReason = null;
+                                AlarmServicePlugin.setAlarmState(false, null);
+                            }
+                        }
+                    }
+                });
+            }
             mediaPlayer.prepare();
             mediaPlayer.start();
             

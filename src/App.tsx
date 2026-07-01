@@ -765,9 +765,24 @@ export default function App() {
               setAlarmReason(state.alarmReason as any);
               setScreen(Screen.LOCK);
             }
+          } else if (!state.isAlarming && screen === Screen.LOCK) {
+            console.log("Native service is no longer alarming, resetting UI lock screen & minimizing app");
+            setAlarmReason(null);
+            setScreen(Screen.HOME);
+            if (Capacitor.isNativePlatform()) {
+              AlarmService.minimizeApp().catch(err => console.error("Error minimizing app inside syncNativeServiceState:", err));
+            }
           }
         } else {
           setIsMonitoring(false);
+          if (screen === Screen.LOCK) {
+            console.log("Native service not running and in LOCK screen, returning to HOME & minimizing app");
+            setAlarmReason(null);
+            setScreen(Screen.HOME);
+            if (Capacitor.isNativePlatform()) {
+              AlarmService.minimizeApp().catch(err => console.error("Error minimizing app inside syncNativeServiceState-notRunning:", err));
+            }
+          }
         }
       } catch (e) {
         console.error("Error syncing native state:", e);
@@ -4309,8 +4324,8 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
   };
 
   useEffect(() => {
-    if (reason === 'theft' || reason === 'low') {
-      const duration = 2500; // 2.5 seconds for both Tune and Voice Alert
+    if ((reason === 'theft' || reason === 'low') && !config.voiceAlert) {
+      const duration = 2500; // 2.5 seconds only when Voice Alert is OFF
       const timer = setTimeout(() => {
         console.log(`Automatically disarming ${reason} alarm after ${duration}ms`);
         if (onStopRef.current) {
@@ -4378,6 +4393,12 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
         voiceAudio = new Audio(customAudio);
         voiceAudio.volume = config.volume / 100;
         voiceAudio.loop = isFull; // Only loop full battery custom voice alarms
+        if (!isFull) {
+          voiceAudio.onended = () => {
+            console.log("Custom voice alert MP3 finished, disarming alarm.");
+            if (onStopRef.current) onStopRef.current(true);
+          };
+        }
         voiceAudio.play().catch(e => {
           console.warn("Custom alarm voice MP3 playback failed:", e);
         });
@@ -4401,6 +4422,12 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
         voiceAudio = new Audio(relativeSrc);
         voiceAudio.volume = config.volume / 100;
         voiceAudio.loop = isFull; // Only loop full battery preset voice alarms
+        if (!isFull) {
+          voiceAudio.onended = () => {
+            console.log("Preset voice alert MP3 finished, disarming alarm.");
+            if (onStopRef.current) onStopRef.current(true);
+          };
+        }
         voiceAudio.play().catch(e => {
           console.warn("Preset voice alert MP3 play failed:", e);
         });
@@ -4672,8 +4699,6 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
             {errorMessage}
           </motion.div>
         )}
-
-
 
         {reason && reason !== 'low' && (
           <div className="flex gap-4">
