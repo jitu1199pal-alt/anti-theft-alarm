@@ -1650,6 +1650,8 @@ export default function App() {
             triggerInterstitial={triggerAdMobInterstitial}
             isPremium={isPremium}
             setShowPremiumModal={setShowPremiumModal}
+            theme={theme}
+            setTheme={setTheme}
           />
         );
       case Screen.SPEED_TEST:
@@ -2790,25 +2792,6 @@ function HomeScreen({
           >
             <Share2 size={12} />
             <span>Share / शेयर</span>
-          </button>
-          <button 
-            onClick={() => setTheme(theme === 'dark' ? 'neon' : (theme === 'neon' ? 'light' : 'dark'))} 
-            className="w-10 h-10 bg-slate-900 border border-slate-800 rounded-full flex items-center justify-center shrink-0 hover:bg-slate-800 transition-all text-[#00FF88] shadow-[0_0_15px_rgba(0,0,0,0.4)]"
-            title="Cycle Theme / थीम बदलें"
-          >
-            {theme === 'light' ? (
-              <Moon size={18} className="text-[#FF007F]" />
-            ) : theme === 'dark' ? (
-              <Palette size={18} className="text-[#00FF88]" />
-            ) : (
-              <Sun size={18} className="text-[#FF007F]" />
-            )}
-          </button>
-          <button 
-            onClick={() => triggerAdMobInterstitial(() => setScreen(Screen.ALARM_SETTINGS))} 
-            className="w-10 h-10 bg-slate-900 border border-slate-800 rounded-full flex items-center justify-center shrink-0 hover:bg-slate-800 text-white transition-all shadow-[0_0_15px_rgba(0,0,0,0.4)]"
-          >
-            <Settings size={18} />
           </button>
         </div>
       </header>

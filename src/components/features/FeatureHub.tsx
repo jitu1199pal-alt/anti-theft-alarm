@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { Zap, Play, Trash2, Speech, Smartphone, Bell, HelpCircle, Activity, ShieldCheck, Gamepad, Crown } from 'lucide-react';
+import { Zap, Play, Trash2, Speech, Smartphone, Bell, HelpCircle, Activity, ShieldCheck, Gamepad, Crown, Moon, Palette, Sun, Settings } from 'lucide-react';
 import { Screen, AlarmConfig } from '../../types';
 import { BatteryAvatar } from './BatteryAvatar';
 
@@ -17,9 +17,11 @@ interface FeatureHubProps {
   triggerInterstitial?: (onDismiss: () => void) => void;
   isPremium?: boolean;
   setShowPremiumModal?: (show: boolean) => void;
+  theme?: any;
+  setTheme?: (t: any) => void;
 }
 
-export function FeatureHub({ battery, alarmConfig, setAlarmConfig, setScreen, onBoostIcon, triggerInterstitial, isPremium, setShowPremiumModal }: FeatureHubProps) {
+export function FeatureHub({ battery, alarmConfig, setAlarmConfig, setScreen, onBoostIcon, triggerInterstitial, isPremium, setShowPremiumModal, theme, setTheme }: FeatureHubProps) {
   
   const tools = [
     {
@@ -135,8 +137,33 @@ export function FeatureHub({ battery, alarmConfig, setAlarmConfig, setScreen, on
           <span className="text-[9px] uppercase tracking-widest text-accent font-extrabold">Advanced Utilities</span>
           <h1 className="text-2xl font-black text-white">Power Tools Hub / एक्स्ट्रा फीचर्स</h1>
         </div>
-        <div className="w-9 h-9 bg-accent/10 border border-accent/20 rounded-xl flex items-center justify-center">
-          <Gamepad size={18} className="text-accent animate-pulse" />
+        <div className="flex gap-2 items-center">
+          <button 
+            onClick={() => setTheme?.(theme === 'dark' ? 'neon' : (theme === 'neon' ? 'light' : 'dark'))} 
+            className="w-10 h-10 bg-slate-900 border border-slate-800 rounded-full flex items-center justify-center shrink-0 hover:bg-slate-800 transition-all text-[#00FF88] shadow-[0_0_15px_rgba(0,0,0,0.4)] cursor-pointer"
+            title="Cycle Theme / थीम बदलें"
+          >
+            {theme === 'light' ? (
+              <Moon size={18} className="text-[#FF007F]" />
+            ) : theme === 'dark' ? (
+              <Palette size={18} className="text-[#00FF88]" />
+            ) : (
+              <Sun size={18} className="text-[#FF007F]" />
+            )}
+          </button>
+          <button 
+            onClick={() => {
+              if (triggerInterstitial) {
+                triggerInterstitial(() => setScreen(Screen.ALARM_SETTINGS));
+              } else {
+                setScreen(Screen.ALARM_SETTINGS);
+              }
+            }} 
+            className="w-10 h-10 bg-slate-900 border border-slate-800 rounded-full flex items-center justify-center shrink-0 hover:bg-slate-800 text-white transition-all shadow-[0_0_15px_rgba(0,0,0,0.4)] cursor-pointer"
+            title="Alarm Settings / सेटिंग्स"
+          >
+            <Settings size={18} />
+          </button>
         </div>
       </header>
 
