@@ -87,6 +87,7 @@ interface AlarmServicePluginType {
   setAudioRoute(options: { mode: 'earpiece' | 'speaker' | 'reset' }): Promise<{ success: boolean }>;
   startEarpieceTone(options: { frequency: number }): Promise<{ success: boolean }>;
   stopEarpieceTone(): Promise<{ success: boolean }>;
+  addListener(eventName: string, listenerFunc: (data: any) => void): Promise<{ remove: () => void }>;
 }
 
 const AlarmService = registerPlugin<AlarmServicePluginType>('AlarmService');
@@ -749,14 +750,32 @@ export default function App() {
           }
           setIsMonitoring(true);
           if (state.targetPercentage) {
-            setAlarmConfig(prev => ({
-              ...prev,
-              targetPercentage: state.targetPercentage,
-              lowBatteryPercentage: state.lowBatteryPercentage ?? prev.lowBatteryPercentage,
-              vibrate: state.vibrate ?? prev.vibrate,
-              hasCustomizedLowBatteryPercentage: state.hasCustomizedLowBatteryPercentage ?? prev.hasCustomizedLowBatteryPercentage,
-              hasCustomizedTargetPercentage: state.hasCustomizedTargetPercentage ?? prev.hasCustomizedTargetPercentage
-            }));
+            setAlarmConfig(prev => {
+              const targetVal = state.targetPercentage;
+              const lowVal = state.lowBatteryPercentage ?? prev.lowBatteryPercentage;
+              const vibVal = state.vibrate ?? prev.vibrate;
+              const hasCustLow = state.hasCustomizedLowBatteryPercentage ?? prev.hasCustomizedLowBatteryPercentage;
+              const hasCustTar = state.hasCustomizedTargetPercentage ?? prev.hasCustomizedTargetPercentage;
+
+              if (
+                prev.targetPercentage === targetVal &&
+                prev.lowBatteryPercentage === lowVal &&
+                prev.vibrate === vibVal &&
+                prev.hasCustomizedLowBatteryPercentage === hasCustLow &&
+                prev.hasCustomizedTargetPercentage === hasCustTar
+              ) {
+                return prev;
+              }
+
+              return {
+                ...prev,
+                targetPercentage: targetVal,
+                lowBatteryPercentage: lowVal,
+                vibrate: vibVal,
+                hasCustomizedLowBatteryPercentage: hasCustLow,
+                hasCustomizedTargetPercentage: hasCustTar
+              };
+            });
           }
           if (state.isAlarming && state.alarmReason) {
             if (justStoppedReasonRef.current === state.alarmReason) {
@@ -936,8 +955,23 @@ export default function App() {
     });
 
     // Android Event Trackers (Back Button and Resume State)
+    let alarmStateListener: any = null;
     const setupNativeListeners = async () => {
       if (Capacitor.isNativePlatform()) {
+        try {
+          alarmStateListener = await AlarmService.addListener('alarmStateChanged', (data: any) => {
+            console.log("alarmStateChanged event from native service:", data);
+            if (data && !data.isAlarming) {
+              console.log("Native alarm stopped. Disarming UI and minimizing app immediately.");
+              setAlarmReason(null);
+              setScreen(Screen.HOME);
+              AlarmService.minimizeApp().catch(err => console.error("Error minimizing app from alarmStateChanged event:", err));
+            }
+          });
+        } catch (e) {
+          console.error("Error registering alarmStateChanged listener:", e);
+        }
+
         CapApp.addListener('backButton', ({ canGoBack }) => {
           if (screen === Screen.HOME || screen === Screen.SPLASH || screen === Screen.LOCK) {
             CapApp.exitApp();
@@ -991,6 +1025,9 @@ export default function App() {
       unsubscribe();
       if (Capacitor.isNativePlatform()) {
         CapApp.removeAllListeners();
+        if (alarmStateListener && typeof alarmStateListener.remove === 'function') {
+          alarmStateListener.remove();
+        }
       }
     };
   }, [screen]);

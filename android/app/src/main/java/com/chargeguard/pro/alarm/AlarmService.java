@@ -304,6 +304,12 @@ public class AlarmService extends Service {
                 AlarmServicePlugin.setAlarmState(false, null);
                 hadChargerUnplugged = false;
                 wasChargingOnStart = true;
+            } else if ("low".equals(alarmReason) && isCharging) {
+                // Stopped low battery alarm because charger was plugged in!
+                stopAlarmSound();
+                isAlarmActive = false;
+                alarmReason = null;
+                AlarmServicePlugin.setAlarmState(false, null);
             } else {
                 // Ignore general battery charge level changes while other alarms are actively ringing
                 return;

@@ -23,11 +23,25 @@ public class AlarmServicePlugin extends Plugin {
     private android.media.AudioTrack nativeEarpieceTrack = null;
     private boolean isNativeEarpiecePlaying = false;
 
+    private static AlarmServicePlugin instance = null;
+
+    @Override
+    public void load() {
+        super.load();
+        instance = this;
+    }
+
     public static void setAlarmState(boolean alarming, String reason) {
         activeAlarmTriggered = alarming;
         activeAlarmReason = reason;
         if (alarming) {
             isServiceRunning = true;
+        }
+        if (instance != null) {
+            JSObject data = new JSObject();
+            data.put("isAlarming", alarming);
+            data.put("alarmReason", reason != null ? reason : "");
+            instance.notifyListeners("alarmStateChanged", data);
         }
     }
 
