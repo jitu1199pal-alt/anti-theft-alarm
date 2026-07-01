@@ -752,8 +752,10 @@ export default function App() {
             setAlarmConfig(prev => ({
               ...prev,
               targetPercentage: state.targetPercentage,
-              lowBatteryPercentage: 20, // Force 20% as requested
-              vibrate: state.vibrate ?? prev.vibrate
+              lowBatteryPercentage: state.lowBatteryPercentage ?? prev.lowBatteryPercentage,
+              vibrate: state.vibrate ?? prev.vibrate,
+              hasCustomizedLowBatteryPercentage: state.hasCustomizedLowBatteryPercentage ?? prev.hasCustomizedLowBatteryPercentage,
+              hasCustomizedTargetPercentage: state.hasCustomizedTargetPercentage ?? prev.hasCustomizedTargetPercentage
             }));
           }
           if (state.isAlarming && state.alarmReason) {
