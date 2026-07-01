@@ -795,7 +795,7 @@ export default function App() {
     if (Capacitor.isNativePlatform()) {
       const pollInterval = setInterval(() => {
         syncNativeServiceState();
-      }, 3000);
+      }, 500);
       return () => clearInterval(pollInterval);
     }
   }, []);
@@ -1193,7 +1193,7 @@ export default function App() {
           if (parsed.connectVoiceSpeakEnabled === undefined) parsed.connectVoiceSpeakEnabled = true;
           if (parsed.fullVoiceSpeakEnabled === undefined) parsed.fullVoiceSpeakEnabled = true;
           if (parsed.useHindiVoice === undefined) parsed.useHindiVoice = localStorage.getItem('use_hindi') === 'true';
-          parsed.voiceAlert = true;
+          if (parsed.voiceAlert === undefined) parsed.voiceAlert = true;
           return parsed;
         }
       } catch (e) {
@@ -4641,7 +4641,7 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
         
         <div className="space-y-4">
           <h1 className="text-4xl font-black text-white uppercase tracking-tighter italic">
-            {isFull ? t.chargingAchieved : (isTheft ? t.securityBreach : (isLow ? t.criticalLow : t.systemAlert))}
+            {isFull ? t.chargingAchieved : (isTheft ? t.securityBreach : (isLow ? t.criticalLow.replace("35%", `${config.lowBatteryPercentage}%`) : t.systemAlert))}
           </h1>
           <p className="text-accent text-sm font-bold uppercase tracking-[0.3em] animate-pulse">
             {isFull ? t.pleaseTurnOff : (isTheft ? t.chargerDisconnected : (isLow ? t.batteryExhausted : t.systemAlert))}
