@@ -27,11 +27,17 @@ import {
   Gift,
   Share2,
   Check,
-  Gamepad
+  Gamepad,
+  Crown,
+  Sparkles,
+  Download,
+  RefreshCw,
+  AlertTriangle
 } from 'lucide-react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
 import { Share } from '@capacitor/share';
+import confetti from 'canvas-confetti';
 
 interface AlarmServicePluginType {
   startService(options: {
@@ -96,6 +102,7 @@ import { JunkCleaner } from './components/features/JunkCleaner';
 import { VoiceAlertSettings } from './components/features/VoiceAlertSettings';
 import { HardwareDiagnostics } from './components/features/HardwareDiagnostics';
 import { StickyNotificationPreview } from './components/features/StickyNotificationPreview';
+import { PlayStoreUpdateModal } from './components/PlayStoreUpdateModal';
 
 // =====================================================================
 //                   ADMOB AD UNIT CONFIGURATION (REAL CONFIG)
@@ -122,6 +129,17 @@ export function getAdUnitId(type: 'banner' | 'interstitial' | 'native'): string 
 
 // Global helper to trigger AdMob Interstitial with a callback
 export async function triggerAdMobInterstitial(onDismiss: () => void) {
+  const isPaidPremium = localStorage.getItem('is_premium_active') === 'true';
+  const trialStartStr = localStorage.getItem('trial_start_time');
+  const trialDurationMs = 7 * 24 * 60 * 60 * 1000;
+  const isTrialActive = trialStartStr ? (Date.now() - parseInt(trialStartStr, 10) < trialDurationMs) : false;
+  
+  if (isPaidPremium) {
+    console.log("AdMob Interstitial: Paid Premium Active. Bypassing ad sequence instantly.");
+    onDismiss();
+    return;
+  }
+
   if (!navigator.onLine) {
     console.log("AdMob Interstitial: Offline device context detected. Skipping ad sequence.");
     onDismiss();
@@ -244,11 +262,143 @@ export function getPresetAudioSrc(text: string | undefined, isFull: boolean): st
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>(Screen.SPLASH);
+  
+  // Premium Trial & Subscription Management
+  const getInitialPremiumStatus = () => {
+    const isPaidPremium = localStorage.getItem('is_premium_active') === 'true';
+    let trialStartStr = localStorage.getItem('trial_start_time');
+    if (!trialStartStr) {
+      trialStartStr = Date.now().toString();
+      localStorage.setItem('trial_start_time', trialStartStr);
+    }
+    const trialStart = parseInt(trialStartStr, 10);
+    const trialDurationMs = 7 * 24 * 60 * 60 * 1000;
+    const msElapsed = Date.now() - trialStart;
+    const isTrial = msElapsed < trialDurationMs;
+    const daysLeft = Math.max(0, Math.ceil((trialDurationMs - msElapsed) / (24 * 60 * 60 * 1000)));
+    return {
+      isPremium: isPaidPremium || isTrial,
+      isPaidPremium,
+      isTrialActive: isTrial,
+      daysLeft
+    };
+  };
+
+  const [premiumState, setPremiumState] = useState(getInitialPremiumStatus);
+  const isPremium = premiumState.isPremium;
+
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [show6HourReminder, setShow6HourReminder] = useState(false);
   const [theme, setTheme] = useState<Theme>(() => {
     return (localStorage.getItem('applet_theme') as Theme) || 'dark';
   });
   const lang = 'en';
+
+  const [showUpdateDialog, setShowUpdateDialog] = useState(false);
+  const [appUpdateInfo, setAppUpdateInfo] = useState<{
+    latestVersion: string;
+    minRequiredVersion: string;
+    updateUrl: string;
+    releaseNotes: string[];
+    isForceUpdate: boolean;
+    releaseDate: string;
+  } | null>(null);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [updateStatusText, setUpdateStatusText] = useState<string | null>(null);
+
+  const checkAppUpdates = async (isManual = false) => {
+    setIsCheckingUpdate(true);
+    if (isManual) {
+      setUpdateStatusText("Checking Google Play for updates...");
+    }
+    try {
+      const response = await fetch(`/app-version.json?t=${Date.now()}`);
+      if (!response.ok) throw new Error("Update check failed");
+      const data = await response.json();
+      
+      const currentVersion = "1.0.35";
+      
+      const isNewer = (current: string, latest: string) => {
+        const currParts = current.split('.').map(Number);
+        const lateParts = latest.split('.').map(Number);
+        for (let i = 0; i < Math.max(currParts.length, lateParts.length); i++) {
+          const c = currParts[i] || 0;
+          const l = lateParts[i] || 0;
+          if (l > c) return true;
+          if (l < c) return false;
+        }
+        return false;
+      };
+
+      if (isNewer(currentVersion, data.latestVersion)) {
+        setAppUpdateInfo(data);
+        setShowUpdateDialog(true);
+        if (isManual) {
+          setUpdateStatusText("New version v" + data.latestVersion + " is available!");
+        }
+      } else {
+        if (isManual) {
+          setUpdateStatusText("Your app is already up to date (v" + currentVersion + ")");
+        }
+      }
+    } catch (e) {
+      console.error("App update check failed:", e);
+      if (isManual) {
+        setUpdateStatusText("Unable to check. Please check your network connection.");
+      }
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      checkAppUpdates(false);
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const refreshPremiumState = () => {
+    const isPaidPremium = localStorage.getItem('is_premium_active') === 'true';
+    let trialStartStr = localStorage.getItem('trial_start_time');
+    if (!trialStartStr) {
+      trialStartStr = Date.now().toString();
+      localStorage.setItem('trial_start_time', trialStartStr);
+    }
+    const trialStart = parseInt(trialStartStr, 10);
+    const trialDurationMs = 7 * 24 * 60 * 60 * 1000;
+    const msElapsed = Date.now() - trialStart;
+    const isTrial = msElapsed < trialDurationMs;
+    const daysLeft = Math.max(0, Math.ceil((trialDurationMs - msElapsed) / (24 * 60 * 60 * 1000)));
+    
+    setPremiumState({
+      isPremium: isPaidPremium || isTrial,
+      isPaidPremium,
+      isTrialActive: isTrial,
+      daysLeft
+    });
+  };
+
+  useEffect(() => {
+    window.addEventListener('premium_status_changed', refreshPremiumState);
+    return () => window.removeEventListener('premium_status_changed', refreshPremiumState);
+  }, []);
+
+  const simulateTrialExpiry = () => {
+    // Set trial start to 8 days ago
+    const eightDaysAgo = Date.now() - (8 * 24 * 60 * 60 * 1000);
+    localStorage.setItem('trial_start_time', eightDaysAgo.toString());
+    localStorage.removeItem('is_premium_active');
+    refreshPremiumState();
+    window.dispatchEvent(new Event('premium_status_changed'));
+  };
+
+  const resetTrialPeriod = () => {
+    localStorage.setItem('trial_start_time', Date.now().toString());
+    localStorage.removeItem('is_premium_active');
+    refreshPremiumState();
+    window.dispatchEvent(new Event('premium_status_changed'));
+  };
 
   useEffect(() => {
     localStorage.setItem('applet_theme', theme);
@@ -1389,9 +1539,14 @@ export default function App() {
               console.error("Share failed", e);
             }
           }}
+          isPremium={isPremium}
+          premiumState={premiumState}
+          simulateTrialExpiry={simulateTrialExpiry}
+          resetTrialPeriod={resetTrialPeriod}
+          setShowPremiumModal={setShowPremiumModal}
         />
       );
-      case Screen.ALARM_SETTINGS: return <AlarmSettings config={alarmConfig} setConfig={setAlarmConfig} onBack={() => setScreen(Screen.HOME)} t={t} theme={theme} setTheme={setTheme} />;
+      case Screen.ALARM_SETTINGS: return <AlarmSettings config={alarmConfig} setConfig={setAlarmConfig} onBack={() => setScreen(Screen.HOME)} t={t} theme={theme} setTheme={setTheme} isPremium={isPremium} setShowPremiumModal={setShowPremiumModal} checkAppUpdates={checkAppUpdates} isCheckingUpdate={isCheckingUpdate} updateStatusText={updateStatusText} />;
       case Screen.SECURITY: return <SecurityScreen onBack={() => setScreen(Screen.HOME)} t={t} />;
       case Screen.HISTORY: return <HistoryScreen logs={chargingLogs} setLogs={setChargingLogs} chargingCycles={chargingCycles} onBack={() => setScreen(Screen.HOME)} t={t} />;
       case Screen.HEALTH: return <HealthScreen battery={battery} batteryCapacity={alarmConfig.batteryCapacity || 5000} chargingCycles={chargingCycles} onBack={() => setScreen(Screen.HOME)} t={t} />;
@@ -1468,6 +1623,8 @@ export default function App() {
               console.log("Virtual Pet Feed Boost Action triggered successfully.");
             }} 
             triggerInterstitial={triggerAdMobInterstitial}
+            isPremium={isPremium}
+            setShowPremiumModal={setShowPremiumModal}
           />
         );
       case Screen.SPEED_TEST:
@@ -1477,7 +1634,7 @@ export default function App() {
       case Screen.CLEANER:
         return <JunkCleaner onBack={() => setScreen(Screen.FEATURES)} />;
       case Screen.VOICE_ALERTS:
-        return <VoiceAlertSettings config={alarmConfig} setConfig={setAlarmConfig} onBack={() => setScreen(Screen.FEATURES)} />;
+        return <VoiceAlertSettings config={alarmConfig} setConfig={setAlarmConfig} onBack={() => setScreen(Screen.FEATURES)} isPremium={isPremium} setShowPremiumModal={setShowPremiumModal} />;
       case Screen.DIAGNOSTICS:
         return <HardwareDiagnostics onBack={() => setScreen(Screen.FEATURES)} />;
       case Screen.NOTIFICATION_PREVIEW:
@@ -1492,7 +1649,28 @@ export default function App() {
             onSimulateNotification={() => setShow6HourReminder(true)}
           />
         );
-      default: return <HomeScreen battery={battery} config={alarmConfig} setConfig={setAlarmConfig} isMonitoring={isMonitoring} setMonitoring={setIsMonitoring} setScreen={setScreen} nativePermissions={nativePermissions} hasOtherPermissionsConfirmed={hasOtherPermissionsConfirmed} setHasOtherPermissionsConfirmed={setHasOtherPermissionsConfirmed} hasAutoStartConfirmed={hasAutoStartConfirmed} setHasAutoStartConfirmed={setHasAutoStartConfirmed} onTest={() => { setAlarmReason('test'); setScreen(Screen.LOCK); }} t={t} />;
+      default: return (
+        <HomeScreen 
+          battery={battery} 
+          config={alarmConfig} 
+          setConfig={setAlarmConfig} 
+          isMonitoring={isMonitoring} 
+          setMonitoring={setIsMonitoring} 
+          setScreen={setScreen} 
+          nativePermissions={nativePermissions} 
+          hasOtherPermissionsConfirmed={hasOtherPermissionsConfirmed} 
+          setHasOtherPermissionsConfirmed={setHasOtherPermissionsConfirmed} 
+          hasAutoStartConfirmed={hasAutoStartConfirmed} 
+          setHasAutoStartConfirmed={setHasAutoStartConfirmed} 
+          onTest={() => { setAlarmReason('test'); setScreen(Screen.LOCK); }} 
+          t={t} 
+          isPremium={isPremium}
+          premiumState={premiumState}
+          simulateTrialExpiry={simulateTrialExpiry}
+          resetTrialPeriod={resetTrialPeriod}
+          setShowPremiumModal={setShowPremiumModal}
+        />
+      );
   }
 };
 
@@ -2195,6 +2373,12 @@ export default function App() {
           <NavButton active={screen === Screen.SECURITY} icon={Shield} onClick={() => setScreen(Screen.SECURITY)} />
         </div>
       )}
+      <PremiumModal show={showPremiumModal} onClose={() => setShowPremiumModal(false)} />
+      <PlayStoreUpdateModal 
+        show={showUpdateDialog} 
+        onClose={() => setShowUpdateDialog(false)} 
+        updateInfo={appUpdateInfo} 
+      />
       </div>
     </ErrorBoundary>
   );
@@ -2485,7 +2669,7 @@ function SplashScreen({ t }: any) {
         {/* sync_v1.0.26 */}
         <p className="text-slate-400 text-[10px] tracking-[0.4em] font-black mt-3 uppercase flex items-center justify-center gap-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-[#00FF88] animate-ping" />
-          <span>{t.coreSystem} v1.0.32</span>
+          <span>{t.coreSystem} v1.0.35</span>
         </p>
       </div>
     </motion.div>
@@ -2517,7 +2701,12 @@ function HomeScreen({
   hasAutoStartConfirmed,
   setHasAutoStartConfirmed,
   theme,
-  setTheme
+  setTheme,
+  isPremium,
+  premiumState,
+  simulateTrialExpiry,
+  resetTrialPeriod,
+  setShowPremiumModal
 }: any) {
   const [isPermissionsExpanded, setIsPermissionsExpanded] = useState(false);
 
@@ -2548,9 +2737,31 @@ function HomeScreen({
           </h1>
         </div>
         <div className="flex gap-2 items-center">
+          {premiumState.isPaidPremium ? (
+            <div className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-emerald-500/15 via-teal-500/15 to-emerald-500/15 border border-emerald-500/30 text-[#00FF88] font-black text-[10px] uppercase rounded-full tracking-wider shadow-[0_0_15px_rgba(16,185,129,0.2)]">
+              <Crown size={12} className="text-[#00FF88] fill-current shrink-0 animate-pulse" />
+              <span>Premium Active / एक्टिव है</span>
+            </div>
+          ) : premiumState.isTrialActive ? (
+            <button 
+              onClick={() => setShowPremiumModal(true)} 
+              className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 border border-amber-400/20 text-black font-black text-[10px] uppercase rounded-full tracking-wider transition-all duration-200 active:scale-95 shadow-[0_0_15px_rgba(253,224,71,0.4)] cursor-pointer"
+            >
+              <Crown size={12} className="text-black fill-current shrink-0 animate-bounce" />
+              <span>Trial: {premiumState.daysLeft}d Left / ट्रायल</span>
+            </button>
+          ) : (
+            <button 
+              onClick={() => setShowPremiumModal(true)} 
+              className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-rose-500 via-red-500 to-pink-600 border border-rose-500/30 text-white font-black text-[10px] uppercase rounded-full tracking-wider transition-all duration-200 active:scale-95 shadow-[0_0_15px_rgba(244,63,94,0.4)] cursor-pointer animate-pulse"
+            >
+              <Crown size={12} className="text-white fill-current shrink-0 animate-bounce" />
+              <span>Unlock Premium / अनलॉक करें</span>
+            </button>
+          )}
           <button 
             onClick={onShare} 
-            className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-emerald-500/10 to-pink-500/10 hover:from-emerald-500/20 hover:to-pink-500/20 border border-white/10 text-[#00FF88] hover:text-[#FF007F] text-[10px] font-black uppercase rounded-full tracking-wider transition-all duration-200 active:scale-95 animate-pulse"
+            className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-emerald-500/10 to-pink-500/10 hover:from-emerald-500/20 hover:to-pink-500/20 border border-white/10 text-[#00FF88] hover:text-[#FF007F] text-[10px] font-black uppercase rounded-full tracking-wider transition-all duration-200 active:scale-95"
           >
             <Share2 size={12} />
             <span>Share / शेयर</span>
@@ -2576,6 +2787,111 @@ function HomeScreen({
           </button>
         </div>
       </header>
+
+      {/* 👑 Premium & 7-Day Free Trial Info Panel */}
+      {premiumState.isPaidPremium ? (
+        <div className="w-full mb-6 bg-gradient-to-r from-emerald-950/40 via-teal-950/40 to-emerald-950/40 border border-[#00FF88]/20 rounded-3xl p-5 flex items-center justify-between shadow-[0_15px_35px_rgba(0,0,0,0.5)] relative overflow-hidden group animate-[pulse_5s_infinite]">
+          <div className="absolute -right-10 -bottom-10 w-32 h-32 bg-emerald-500/5 rounded-full blur-3xl" />
+          <div className="flex items-center gap-4 relative z-10">
+            <div className="w-12 h-12 rounded-2xl bg-[#00FF88]/10 border border-[#00FF88]/30 flex items-center justify-center text-xl shrink-0 shadow-[0_0_20px_rgba(0,255,136,0.25)]">
+              👑
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-black text-[#00FF88] uppercase tracking-wider">Premium Access Active!</h4>
+                <span className="text-[8px] font-mono leading-none py-0.5 px-1.5 rounded bg-emerald-400/10 text-emerald-400 font-extrabold border border-emerald-400/20 uppercase">
+                  ACTIVE
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 mt-1">
+                Enjoying full device protection completely **Ad-Free** / बिना विज्ञापनों के सुरक्षित सुरक्षा!
+              </p>
+              <p className="text-[10px] text-slate-500 mt-0.5">
+                Lifetime Ad Removal • VIP Priority Service • All Alarm Shields Powered Up
+              </p>
+            </div>
+          </div>
+          <div className="hidden sm:flex shrink-0 w-10 h-10 bg-[#00FF88]/10 rounded-full items-center justify-center text-emerald-400 shadow-[0_0_15px_rgba(0,255,136,0.15)]">
+            <Sparkles size={16} className="animate-pulse" />
+          </div>
+        </div>
+      ) : premiumState.isTrialActive ? (
+        <div className="w-full mb-6 bg-gradient-to-r from-amber-950/40 via-yellow-950/30 to-amber-950/40 border border-amber-400/30 rounded-3xl p-5 flex flex-col gap-4 shadow-[0_15px_35px_rgba(0,0,0,0.5)] relative overflow-hidden group">
+          <div className="absolute -right-10 -bottom-10 w-32 h-32 bg-amber-500/5 rounded-full blur-3xl" />
+          <div className="flex items-start justify-between gap-4 relative z-10">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-amber-400/10 border border-amber-400/30 flex items-center justify-center text-xl shrink-0 shadow-[0_0_20px_rgba(251,191,36,0.25)] animate-pulse">
+                ⏳
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-sm font-black text-amber-400 uppercase tracking-wider">7-Day Free Trial is Active!</h4>
+                  <span className="text-[8px] font-mono leading-none py-0.5 px-1.5 rounded bg-amber-400/20 text-amber-300 font-extrabold border border-amber-400/30 uppercase tracking-widest">
+                    {premiumState.daysLeft} DAYS LEFT
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 mt-1">
+                  You are currently enjoying full Premium benefits for free! Custom replaced voices, charging speed tests, and diagnostic buffers are completely unlocked.<br />
+                  <span className="text-amber-400/90 font-medium">7 दिनों का फ्री ट्रायल चालू है! ({premiumState.daysLeft} दिन बचे हैं)</span>
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2.5 pt-1 relative z-10 border-t border-amber-400/10">
+            <button
+              onClick={() => setShowPremiumModal(true)}
+              className="px-4 py-2 bg-gradient-to-r from-amber-400 to-yellow-500 hover:from-amber-500 hover:to-yellow-600 text-black font-black text-[9px] uppercase tracking-wider rounded-xl cursor-pointer shadow-lg active:scale-95 transition-all"
+            >
+              🚀 Upgrade to Lifetime Premium
+            </button>
+            <button
+              onClick={simulateTrialExpiry}
+              className="px-4 py-2 bg-red-950/40 hover:bg-red-900/30 text-red-400 border border-red-500/20 font-black text-[9px] uppercase tracking-wider rounded-xl cursor-pointer active:scale-95 transition-all"
+              title="Click to simulate how premium features look and lock when the 7 days are complete."
+            >
+              ⚠️ Test Expiry (ट्रायल समाप्त करके देखें)
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="w-full mb-6 bg-gradient-to-r from-rose-950/40 via-red-950/30 to-rose-950/40 border border-rose-500/30 rounded-3xl p-5 flex flex-col gap-4 shadow-[0_15px_35px_rgba(0,0,0,0.5)] relative overflow-hidden">
+          <div className="absolute -right-10 -bottom-10 w-32 h-32 bg-rose-500/5 rounded-full blur-3xl" />
+          <div className="flex items-start gap-4 relative z-10">
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-xl shrink-0 shadow-[0_0_20px_rgba(244,63,94,0.25)]">
+              🔒
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-black text-rose-400 uppercase tracking-wider">Free Trial Expired!</h4>
+                <span className="text-[8px] font-mono leading-none py-0.5 px-1.5 rounded bg-rose-500/20 text-rose-300 font-extrabold border border-rose-500/30 uppercase tracking-widest">
+                  EXPIRED
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 mt-1">
+                Your 7-day free trial has completed. Advanced features (Custom MP3 ringtones, Hindi replaced comedy voices, Hardware doctor checkup, Charging Speed Booster) are now locked.<br />
+                <span className="text-rose-400 font-medium">आपका 7 दिनों का फ्री ट्रायल समाप्त हो गया है। कृपया प्रीमियम अनलॉक करें।</span>
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2.5 pt-1 relative z-10 border-t border-rose-500/10">
+            <button
+              onClick={() => setShowPremiumModal(true)}
+              className="px-4 py-2 bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700 text-white font-black text-[9px] uppercase tracking-wider rounded-xl cursor-pointer shadow-lg active:scale-95 transition-all"
+            >
+              💎 Unlock Premium Subscription
+            </button>
+            <button
+              onClick={resetTrialPeriod}
+              className="px-4 py-2 bg-white/5 hover:bg-white/10 text-slate-400 border border-white/10 font-black text-[9px] uppercase tracking-wider rounded-xl cursor-pointer active:scale-95 transition-all"
+              title="Reset the 7-day trial period back to the beginning for testing."
+            >
+              🔄 Reset 7-Day Trial (ट्रायल रीसेट करें)
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Anti-Theft Pocket Guard Pro PRO CRITICAL native ad shown at the top of the home page */}
       <div className="w-full mb-6">
@@ -3007,7 +3323,7 @@ function HomeScreen({
 
       <footer className="mt-8 flex justify-between items-center text-slate-500 text-[10px] font-bold uppercase tracking-widest">
         <span>{t.mode}: <span className="text-accent">Auto</span></span>
-        <span className="flex items-center gap-2 italic text-slate-600">v1.0.31-{t.stable}</span>
+        <span className="flex items-center gap-2 italic text-slate-600">v1.0.35-{t.stable}</span>
       </footer>
     </motion.div>
   );
@@ -3027,7 +3343,7 @@ function StatusCard({ icon: Icon, label, value, color }: any) {
   );
 }
 
-function AlarmSettings({ config, setConfig, onBack, t, theme, setTheme }: any) {
+function AlarmSettings({ config, setConfig, onBack, t, theme, setTheme, isPremium, setShowPremiumModal, checkAppUpdates, isCheckingUpdate, updateStatusText }: any) {
   const [showPicker, setShowPicker] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isCapacityDialogOpen, setIsCapacityDialogOpen] = useState(false);
@@ -3042,6 +3358,11 @@ function AlarmSettings({ config, setConfig, onBack, t, theme, setTheme }: any) {
   }, []);
 
   const triggerFileSelectionWithAd = async () => {
+    if (!isPremium) {
+      setShowPremiumModal?.(true);
+      return;
+    }
+
     if (!Capacitor.isNativePlatform()) {
       // Direct pass-through if running in a standard web browser context
       fileInputRef.current?.click();
@@ -3238,12 +3559,22 @@ function AlarmSettings({ config, setConfig, onBack, t, theme, setTheme }: any) {
 
       <div className="space-y-4">
         {/* Custom Song Selector - More Prominent */}
-        <div className="bento-card p-6 space-y-4 border-accent/20 bg-accent/5">
+        <div className={`bento-card p-6 space-y-4 border relative overflow-hidden ${
+          isPremium 
+            ? "border-accent/20 bg-accent/5" 
+            : "border-amber-500/20 bg-amber-500/5"
+        }`}>
+          {!isPremium && (
+            <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-400 text-black font-black text-[8px] uppercase tracking-wider shadow-[0_0_10px_rgba(251,191,36,0.3)]">
+              <Crown size={8} className="fill-current shrink-0" />
+              <span>🔒 Locked</span>
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-3 bg-accent/20 text-accent rounded-2xl"><Music size={24} /></div>
+              <div className={`p-3 rounded-2xl ${isPremium ? 'bg-accent/20 text-accent' : 'bg-amber-400/20 text-amber-400'}`}><Music size={24} /></div>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-accent">{t.customAlarm}</p>
+                <p className={`text-[10px] font-bold uppercase tracking-widest ${isPremium ? 'text-accent' : 'text-amber-400'}`}>{t.customAlarm}</p>
                 <p className="text-sm font-bold text-white">
                   {config.sound === 'Custom' ? (config.customSoundName || 'Custom File') : t.noCustomSongSelected || 'No Custom Song Selected'}
                 </p>
@@ -3251,9 +3582,14 @@ function AlarmSettings({ config, setConfig, onBack, t, theme, setTheme }: any) {
             </div>
             <button 
               onClick={triggerFileSelectionWithAd}
-              className="px-6 py-2 bg-accent text-black text-[10px] font-bold uppercase tracking-widest rounded-full accent-glow"
+              className={`px-6 py-2 flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-widest rounded-full ${
+                isPremium 
+                  ? "bg-accent text-black accent-glow cursor-pointer" 
+                  : "bg-amber-400 text-black hover:bg-amber-500 font-black cursor-pointer shadow-[0_0_10px_rgba(251,191,36,0.3)]"
+              }`}
             >
-              {config.sound === 'Custom' ? t.changeSong : t.pickSong}
+              {!isPremium && <Crown size={11} className="fill-current shrink-0 animate-pulse" />}
+              <span>{isPremium ? (config.sound === 'Custom' ? t.changeSong : t.pickSong) : "Unlock Premium"}</span>
             </button>
           </div>
         </div>
@@ -3280,7 +3616,7 @@ function AlarmSettings({ config, setConfig, onBack, t, theme, setTheme }: any) {
                       key={sound}
                       onClick={() => { setConfig({...config, sound, customSoundUrl: undefined, customSoundName: undefined}); setShowPicker(false); }}
                       className={cn(
-                        "flex items-center justify-between p-3 rounded-xl transition-all",
+                        "flex items-center justify-between p-3 rounded-xl transition-all cursor-pointer",
                         config.sound === sound ? "bg-accent/10 text-accent" : "hover:bg-white/5 text-slate-400"
                       )}
                     >
@@ -3294,13 +3630,16 @@ function AlarmSettings({ config, setConfig, onBack, t, theme, setTheme }: any) {
                   <button 
                     onClick={triggerFileSelectionWithAd}
                     className={cn(
-                      "flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 transition-all text-left",
-                      config.sound === 'Custom' ? "bg-accent/10 text-accent" : "text-slate-400"
+                      "flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 transition-all text-left cursor-pointer",
+                      config.sound === 'Custom' ? "bg-accent/10 text-accent" : "text-slate-400",
+                      !isPremium && "border border-amber-500/20 text-amber-400/90"
                     )}
                   >
-                    <Upload size={16} />
+                    {!isPremium ? <Crown size={16} className="text-amber-400 fill-current animate-pulse shrink-0" /> : <Upload size={16} />}
                     <div className="flex-1 overflow-hidden">
-                      <span className="text-xs font-bold uppercase tracking-widest block">Pick Custom File</span>
+                      <span className="text-xs font-bold uppercase tracking-widest block">
+                        {isPremium ? "Pick Custom File" : "👑 Custom File (Premium)"}
+                      </span>
                       {config.sound === 'Custom' && config.customSoundName && (
                         <span className="text-[10px] opacity-60 truncate block">{config.customSoundName}</span>
                       )}
@@ -3474,6 +3813,33 @@ function AlarmSettings({ config, setConfig, onBack, t, theme, setTheme }: any) {
               />
             ))}
           </div>
+        </div>
+
+        {/* 🚀 Google Play App Update Section */}
+        <div className="bento-card space-y-4 border border-blue-500/15 bg-blue-500/5 relative overflow-hidden">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-blue-500/20 text-blue-400 rounded-2xl">
+                <RefreshCw size={22} className={isCheckingUpdate ? "animate-spin" : ""} />
+              </div>
+              <div className="text-left">
+                <p className="text-[9px] font-bold uppercase tracking-widest text-blue-400">Play Store Updates / अपडेट्स</p>
+                <p className="text-xs font-bold text-white mt-0.5">Current: v1.0.35 (Stable)</p>
+              </div>
+            </div>
+            <button 
+              onClick={() => checkAppUpdates(true)}
+              disabled={isCheckingUpdate}
+              className="px-5 py-2.5 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-800 text-white text-[10px] font-black uppercase tracking-widest rounded-full cursor-pointer transition-all active:scale-95 disabled:opacity-50 select-none shrink-0"
+            >
+              {isCheckingUpdate ? "Checking..." : "Check Now / चेक करें"}
+            </button>
+          </div>
+          {updateStatusText && (
+            <div className="text-[10px] font-black uppercase tracking-wider text-blue-300 py-1.5 px-3 bg-blue-950/50 rounded-xl border border-blue-500/20 text-center animate-pulse mt-2">
+              {updateStatusText}
+            </div>
+          )}
         </div>
       </div>
 
@@ -3925,7 +4291,7 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
 
   useEffect(() => {
     if (reason === 'theft' || reason === 'low') {
-      const duration = config.voiceAlert ? 10000 : 3000; // 3 seconds for Tune, 10 seconds for Voice Alert
+      const duration = 3000; // 3 seconds for both Tune and Voice Alert (reduced from 10 seconds for Voice Alert)
       const timer = setTimeout(() => {
         console.log(`Automatically disarming ${reason} alarm after ${duration}ms`);
         if (onStopRef.current) {
@@ -4349,6 +4715,284 @@ function ToggleRow({ icon: Icon, label, value, onClick }: any) {
         <span className="text-[10px] font-bold uppercase tracking-widest">{value}</span>
         <ChevronRight size={14} />
       </div>
+    </div>
+  );
+}
+
+interface PremiumModalProps {
+  show: boolean;
+  onClose: () => void;
+}
+
+export function PremiumModal({ show, onClose }: PremiumModalProps) {
+  const [purchaseStep, setPurchaseStep] = useState<'details' | 'gpay_sheet' | 'processing' | 'success'>('details');
+  const [selectedMethod, setSelectedMethod] = useState<'balance' | 'card'>('balance');
+  const [selectedPlan, setSelectedPlan] = useState<string>('6months');
+
+  const plans = [
+    { id: 'monthly', name: 'Monthly', nameHi: 'मासिक', price: 19, duration: 'Month', badge: 'Basic Plan' },
+    { id: '6months', name: '6 Months', nameHi: '6 महीने', price: 99, duration: '6 Mo', badge: 'Best Seller', popular: true },
+    { id: '1year', name: '1 Year', nameHi: '1 वर्ष', price: 179, duration: 'Year', badge: 'Popular' },
+    { id: 'lifetime', name: 'Lifetime', nameHi: 'आजीवन', price: 399, duration: 'Lifetime', badge: 'Best Deal' }
+  ];
+
+  const currentPlan = plans.find(p => p.id === selectedPlan) || plans[1];
+
+  useEffect(() => {
+    if (show) {
+      setPurchaseStep('details');
+    }
+  }, [show]);
+
+  if (!show) return null;
+
+  const handleStartPurchase = () => {
+    setPurchaseStep('gpay_sheet');
+  };
+
+  const handleConfirmPurchase = () => {
+    setPurchaseStep('processing');
+    setTimeout(() => {
+      setPurchaseStep('success');
+      // Set storage
+      localStorage.setItem('is_premium_active', 'true');
+      // Trigger event
+      window.dispatchEvent(new Event('premium_status_changed'));
+      // Blast confetti
+      try {
+        confetti({
+          particleCount: 150,
+          spread: 80,
+          origin: { y: 0.6 }
+        });
+      } catch (e) {
+        console.warn("Confetti error:", e);
+      }
+    }, 2000);
+  };
+
+  const handleFinish = () => {
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-md z-[9999] flex items-center justify-center p-4">
+      <motion.div 
+        initial={{ scale: 0.95, y: 30, opacity: 0 }}
+        animate={{ scale: 1, y: 0, opacity: 1 }}
+        exit={{ scale: 0.95, y: 30, opacity: 0 }}
+        className="w-full max-w-[420px] bg-[#0d101d] border border-white/10 rounded-3xl overflow-hidden shadow-[0_25px_60px_rgba(0,0,0,0.9)] text-left flex flex-col relative"
+      >
+        {purchaseStep !== 'processing' && purchaseStep !== 'success' && (
+          <button 
+            onClick={onClose}
+            className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 text-lg transition-all z-25 cursor-pointer"
+          >
+            ×
+          </button>
+        )}
+
+        {purchaseStep === 'details' && (
+          <div className="p-6 flex flex-col gap-5 max-h-[90vh] overflow-y-auto">
+            <div className="text-center pb-3 border-b border-white/10">
+              <div className="w-12 h-12 bg-gradient-to-tr from-amber-400 via-yellow-300 to-amber-500 rounded-2xl mx-auto flex items-center justify-center shadow-[0_0_25px_rgba(253,224,71,0.35)] animate-[pulse_2s_infinite] mb-2">
+                <Crown className="text-black fill-current" size={24} />
+              </div>
+              <h3 className="text-lg font-black text-white uppercase tracking-tight">GO PREMIUM MODE</h3>
+              <p className="text-[10px] text-[#FFD700] font-black tracking-widest mt-0.5">सुरक्षित विज्ञापन-मुक्त कवच</p>
+            </div>
+
+            {/* Subscription Plans Grid */}
+            <div className="space-y-2">
+              <span className="text-[9px] text-slate-500 font-extrabold uppercase tracking-widest font-mono">Select Premium Plan / प्लान चुनें</span>
+              <div className="grid grid-cols-2 gap-2.5">
+                {plans.map((p) => {
+                  const isSelected = selectedPlan === p.id;
+                  return (
+                    <div
+                      key={p.id}
+                      onClick={() => setSelectedPlan(p.id)}
+                      className={cn(
+                        "relative p-3 rounded-2xl border transition-all duration-200 cursor-pointer flex flex-col justify-between overflow-hidden",
+                        isSelected 
+                          ? "bg-amber-400/10 border-amber-400/80 shadow-[0_0_15px_rgba(253,224,71,0.15)]" 
+                          : "bg-white/5 border-white/10 hover:bg-white/10"
+                      )}
+                    >
+                      {p.badge && (
+                        <div className={cn(
+                          "absolute top-0 right-0 text-[7px] font-black uppercase px-1.5 py-0.5 rounded-bl-lg tracking-wider scale-90 origin-top-right",
+                          p.popular ? "bg-amber-400 text-black" : "bg-white/10 text-white/80"
+                        )}>
+                          {p.badge}
+                        </div>
+                      )}
+                      <div className="pt-2">
+                        <span className="text-xs font-black text-white block uppercase tracking-wide">
+                          {p.name}
+                        </span>
+                        <span className="text-[9px] text-slate-400 block font-semibold leading-tight mt-0.5">
+                          {p.nameHi}
+                        </span>
+                      </div>
+                      <div className="mt-3.5 flex items-baseline gap-0.5">
+                        <span className="text-base font-black text-white">₹{p.price}</span>
+                        <span className="text-[8px] text-slate-400 uppercase tracking-widest">/ {p.duration}</span>
+                      </div>
+                      {isSelected && (
+                        <div className="absolute bottom-2 right-2 w-3.5 h-3.5 rounded-full bg-amber-400 flex items-center justify-center">
+                          <Check className="text-black shrink-0" size={9} strokeWidth={4} />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2.5 border-t border-b border-white/5 py-3">
+              <div className="flex items-start gap-2.5">
+                <div className="text-sm shrink-0">🚫</div>
+                <div>
+                  <h4 className="text-[10px] font-black text-white uppercase tracking-wider">Ad-Free Experience (100% विज्ञापन मुक्त)</h4>
+                  <p className="text-[9px] text-slate-400 mt-0.5">Bypass all banners, native screens, full-screen timers & interstitial popups forever.</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2.5">
+                <div className="text-sm shrink-0">⚡</div>
+                <div>
+                  <h4 className="text-[10px] font-black text-white uppercase tracking-wider">Fast Charger Core Booster</h4>
+                  <p className="text-[9px] text-slate-400 mt-0.5">Prioritizes background device cooling buffers for optimized charging speed.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-900/50 border border-white/5 rounded-2xl flex items-center justify-between">
+              <div>
+                <span className="text-[8px] uppercase font-bold text-slate-400 block tracking-widest">SELECTED BILLING</span>
+                <span className="text-xs font-black text-white">
+                  {currentPlan.name} ({currentPlan.nameHi})
+                </span>
+              </div>
+              <div className="text-right">
+                <span className="text-base font-black text-amber-400 block">₹{currentPlan.price}</span>
+                <span className="text-[8px] text-slate-500 uppercase tracking-widest font-mono">lifetime active</span>
+              </div>
+            </div>
+
+            <button 
+              onClick={handleStartPurchase}
+              className="w-full py-3 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-black font-black text-xs uppercase tracking-wider rounded-2xl transition-all hover:scale-[1.01] active:scale-[0.98] shadow-lg flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>GO PREMIUM NOW / अभी खरीदें ➔</span>
+            </button>
+            <p className="text-[9px] text-slate-500 text-center uppercase tracking-wide">Secure Checkout Powered by Google Play Billing</p>
+          </div>
+        )}
+
+        {purchaseStep === 'gpay_sheet' && (
+          <div className="flex flex-col">
+            <div className="p-6 border-b border-white/10 flex justify-between items-center bg-slate-950/40">
+              <div className="flex items-center gap-2">
+                <div className="text-lg">🤖</div>
+                <div>
+                  <h3 className="text-xs font-extrabold text-white uppercase tracking-wider">Google Play Billing</h3>
+                  <p className="text-[10px] text-slate-400">chargeguard-pro-premium-{currentPlan.id}</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="text-sm font-black text-white">₹{currentPlan.price}.00</span>
+                <p className="text-[8px] text-slate-500 uppercase tracking-widest font-mono">{currentPlan.id === 'lifetime' ? 'one-time charge' : 'recurring subscription'}</p>
+              </div>
+            </div>
+
+            <div className="p-6 flex flex-col gap-4">
+              <span className="text-[9px] text-slate-500 font-extrabold uppercase tracking-widest font-mono">Choose Payment Method</span>
+              
+              <div 
+                onClick={() => setSelectedMethod('balance')}
+                className={cn(
+                  "p-4 border rounded-2xl flex items-center justify-between cursor-pointer transition-all",
+                  selectedMethod === 'balance' ? "bg-emerald-500/10 border-emerald-500/50" : "bg-white/5 border-white/10 hover:bg-white/10"
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="text-xl">💰</div>
+                  <div className="text-left">
+                    <span className="text-xs font-bold text-white block">Google Pay Balance</span>
+                    <span className="text-[10px] text-slate-400">Available Balance: ₹500.00</span>
+                  </div>
+                </div>
+                <div className={cn("w-4 h-4 rounded-full border flex items-center justify-center", selectedMethod === 'balance' ? "border-[#00FF88]" : "border-slate-600")}>
+                  {selectedMethod === 'balance' && <div className="w-2.5 h-2.5 rounded-full bg-[#00FF88]" />}
+                </div>
+              </div>
+
+              <div 
+                onClick={() => setSelectedMethod('card')}
+                className={cn(
+                  "p-4 border rounded-2xl flex items-center justify-between cursor-pointer transition-all",
+                  selectedMethod === 'card' ? "bg-emerald-500/10 border-emerald-500/50" : "bg-white/5 border-white/10 hover:bg-white/10"
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="text-xl">💳</div>
+                  <div className="text-left">
+                    <span className="text-xs font-bold text-white block">Visa Card **** 4321</span>
+                    <span className="text-[10px] text-slate-400">Expires 09/30</span>
+                  </div>
+                </div>
+                <div className={cn("w-4 h-4 rounded-full border flex items-center justify-center", selectedMethod === 'card' ? "border-[#00FF88]" : "border-slate-600")}>
+                  {selectedMethod === 'card' && <div className="w-2.5 h-2.5 rounded-full bg-[#00FF88]" />}
+                </div>
+              </div>
+
+              <button 
+                onClick={handleConfirmPurchase}
+                className="w-full mt-2 py-4 bg-emerald-500 hover:bg-emerald-600 text-black font-black text-xs uppercase tracking-wider rounded-2xl transition-all shadow-lg shadow-emerald-950/50 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <span>💳 1-TAP BUY / खरीदें ( ₹{currentPlan.price}.00 )</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {purchaseStep === 'processing' && (
+          <div className="p-12 text-center flex flex-col items-center justify-center gap-6">
+            <div className="w-14 h-14 border-4 border-emerald-500/30 border-t-emerald-400 rounded-full animate-spin" />
+            <div>
+              <h4 className="text-sm font-black text-white uppercase tracking-wider">Processing Secure Payment...</h4>
+              <p className="text-xs text-slate-400 mt-1">Connecting to Google Play Licensing Services. Do not close the app.</p>
+            </div>
+            <p className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mt-4">Safe & Encrypted Session SSL-v3</p>
+          </div>
+        )}
+
+        {purchaseStep === 'success' && (
+          <div className="p-8 text-center flex flex-col gap-6">
+            <div className="w-16 h-16 bg-gradient-to-tr from-emerald-400 to-green-500 rounded-full mx-auto flex items-center justify-center shadow-[0_0_30px_rgba(16,185,129,0.4)] animate-bounce">
+              <span className="text-3xl text-black font-black">✓</span>
+            </div>
+            
+            <div className="space-y-1">
+              <h3 className="text-lg font-black text-[#00FF88] uppercase tracking-tight">PAYMENT SUCCESSFUL!</h3>
+              <p className="text-xs text-slate-300 font-extrabold uppercase">Premium Activated / प्रीमियम चालू हो गया</p>
+            </div>
+
+            <p className="text-xs text-slate-400 leading-relaxed bg-emerald-500/5 border border-emerald-500/10 p-4 rounded-2xl">
+              Thank you for supporting ChargeGuard Pro! Your <strong>{currentPlan.name}</strong> premium license is now active. All ads are permanently removed, and advanced speed booster parameters are online!
+            </p>
+
+            <button 
+              onClick={handleFinish}
+              className="w-full py-3.5 bg-[#00FF88] hover:bg-[#00e077] text-black font-black text-xs uppercase tracking-widest rounded-2xl transition-all cursor-pointer shadow-lg shadow-emerald-950/20"
+            >
+              🎉 CONTINUE AD-FREE EXPERIENCE
+            </button>
+          </div>
+        )}
+      </motion.div>
     </div>
   );
 }

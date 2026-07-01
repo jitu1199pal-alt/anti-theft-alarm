@@ -1,0 +1,13 @@
+{
+  "latestVersion": "1.0.35",
+  "minRequiredVersion": "1.0.0",
+  "updateUrl": "https://play.google.com/store/apps/details?id=com.chargeguard.pro",
+  "releaseNotes": [
+    "🚀 Locked features activated (Custom Voice replacement & local MP3s)!",
+    "🔋 Added Advanced Charging Speed Test & Health diagnostics doctor.",
+    "🛡️ Improved theft-detection algorithm for physical pocket motion.",
+    "⚡ Major performance improvements & critical background alerts bug fixes."
+  ],
+  "isForceUpdate": false,
+  "releaseDate": "2026-07-01"
+}

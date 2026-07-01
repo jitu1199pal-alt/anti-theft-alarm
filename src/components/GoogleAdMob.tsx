@@ -21,6 +21,10 @@ try {
   console.warn("Dynamic import of @capacitor-community/admob failed", e);
 }
 
+const checkIsPremiumPaid = (): boolean => {
+  return localStorage.getItem('is_premium_active') === 'true';
+};
+
 export const getActivePageType = (type?: 'cleaner' | 'battery' | 'security' | 'sensors' | 'general'): 'cleaner' | 'battery' | 'security' | 'sensors' | 'general' => {
   if (type) return type;
   const pathText = (window.location.hash || window.location.pathname || '').toLowerCase();
@@ -100,11 +104,21 @@ export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({
   type
 }) => {
   const isNative = Capacitor.isNativePlatform();
+  const [isPremium, setIsPremium] = useState(() => checkIsPremiumPaid());
   const [admobLoaded, setAdmobLoaded] = useState(false);
   const [admobActive, setAdmobActive] = useState(false);
   const activeType = getActivePageType(type);
 
   useEffect(() => {
+    const handleChanged = () => {
+      setIsPremium(checkIsPremiumPaid());
+    };
+    window.addEventListener('premium_status_changed', handleChanged);
+    return () => window.removeEventListener('premium_status_changed', handleChanged);
+  }, []);
+
+  useEffect(() => {
+    if (isPremium) return;
     let active = true;
     let loadedListener: any = null;
     let failedListener: any = null;
@@ -265,6 +279,10 @@ export const GoogleAdMob: React.FC<GoogleAdMobProps> = ({
     };
   }, [isNative, slot]);
 
+  if (isPremium) {
+    return null;
+  }
+
   // If we are native and AdMob is actively overlays the view, we don't need to render massive blocks
   if (isNative && admobActive) {
     return (
@@ -422,6 +440,12 @@ export const triggerInterstitialAd = async (
   onComplete: () => void,
   type: 'cleaner' | 'battery' | 'security' | 'sensors' | 'general' = 'general'
 ) => {
+  if (checkIsPremiumPaid()) {
+    console.log("Premium Active - Ads bypassed.");
+    onComplete();
+    return;
+  }
+
   if (!navigator.onLine) {
     console.log("No internet connection - executing option directly without showing ads.");
     onComplete();
@@ -516,7 +540,20 @@ export const triggerInterstitialAd = async (
 
 export const GoogleNativeAppAd: React.FC<GoogleNativeAppAdProps> = ({ onInstall, type }) => {
   const isNative = Capacitor.isNativePlatform();
+  const [isPremium, setIsPremium] = useState(() => checkIsPremiumPaid());
   const [loadingAd, setLoadingAd] = useState(false);
+
+  useEffect(() => {
+    const handleChanged = () => {
+      setIsPremium(checkIsPremiumPaid());
+    };
+    window.addEventListener('premium_status_changed', handleChanged);
+    return () => window.removeEventListener('premium_status_changed', handleChanged);
+  }, []);
+
+  if (isPremium) {
+    return null;
+  }
 
   // Auto detect placement type based on dynamic hash context to ensure match consistency across active page slots
   const getDeductedType = (): 'cleaner' | 'battery' | 'security' | 'sensors' | 'general' => {

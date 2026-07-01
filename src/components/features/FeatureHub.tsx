@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { Zap, Play, Trash2, Speech, Smartphone, Bell, HelpCircle, Activity, ShieldCheck, Gamepad } from 'lucide-react';
+import { Zap, Play, Trash2, Speech, Smartphone, Bell, HelpCircle, Activity, ShieldCheck, Gamepad, Crown } from 'lucide-react';
 import { Screen, AlarmConfig } from '../../types';
 import { BatteryAvatar } from './BatteryAvatar';
 
@@ -15,9 +15,11 @@ interface FeatureHubProps {
   setScreen: (s: Screen) => void;
   onBoostIcon: () => void;
   triggerInterstitial?: (onDismiss: () => void) => void;
+  isPremium?: boolean;
+  setShowPremiumModal?: (show: boolean) => void;
 }
 
-export function FeatureHub({ battery, alarmConfig, setAlarmConfig, setScreen, onBoostIcon, triggerInterstitial }: FeatureHubProps) {
+export function FeatureHub({ battery, alarmConfig, setAlarmConfig, setScreen, onBoostIcon, triggerInterstitial, isPremium, setShowPremiumModal }: FeatureHubProps) {
   
   const tools = [
     {
@@ -71,6 +73,12 @@ export function FeatureHub({ battery, alarmConfig, setAlarmConfig, setScreen, on
   ];
 
   const handleToolClick = (targetScreen: Screen) => {
+    const isLocked = !isPremium && (targetScreen === Screen.SPEED_TEST || targetScreen === Screen.DIAGNOSTICS);
+    if (isLocked) {
+      setShowPremiumModal?.(true);
+      return;
+    }
+
     if (triggerInterstitial) {
       triggerInterstitial(() => {
         setScreen(targetScreen);
@@ -80,24 +88,40 @@ export function FeatureHub({ battery, alarmConfig, setAlarmConfig, setScreen, on
     }
   };
 
-  const renderToolCard = (t: typeof tools[0]) => (
-    <div
-      onClick={() => handleToolClick(t.screen)}
-      className="p-5 bento-card border border-white/5 bg-slate-950/80 hover:bg-slate-950 hover:border-[#00FF88]/20 transition-all cursor-pointer flex gap-4 items-start relative overflow-hidden group"
-    >
-      <div className="absolute inset-0 bg-gradient-to-br from-[#00FF88]/2 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-      
-      <div className={`p-3.5 rounded-[1.25rem] shrink-0 ${t.iconColor}`}>
-        <t.icon size={22} />
-      </div>
+  const renderToolCard = (t: typeof tools[0]) => {
+    const isLocked = !isPremium && (t.screen === Screen.SPEED_TEST || t.screen === Screen.DIAGNOSTICS);
+    return (
+      <div
+        onClick={() => handleToolClick(t.screen)}
+        className={`p-5 bento-card border transition-all cursor-pointer flex gap-4 items-start relative overflow-hidden group ${
+          isLocked 
+            ? "border-amber-500/20 bg-slate-950/40 hover:border-amber-500/55" 
+            : "border-white/5 bg-slate-950/80 hover:bg-slate-950 hover:border-[#00FF88]/20"
+        }`}
+      >
+        <div className="absolute inset-0 bg-gradient-to-br from-[#00FF88]/2 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+        
+        {isLocked && (
+          <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-400 text-black font-black text-[8px] uppercase tracking-wider shadow-[0_0_10px_rgba(251,191,36,0.3)]">
+            <Crown size={8} className="fill-current shrink-0" />
+            <span>🔒 Locked</span>
+          </div>
+        )}
 
-      <div className="flex-1 text-left min-w-0 pr-2">
-        <span className="text-[9px] font-black uppercase text-slate-500 tracking-wide block">{t.subtitle}</span>
-        <h4 className="text-sm font-black text-white mt-1 leading-snug">{t.title}</h4>
-        <p className="text-[10.5px] text-slate-400 mt-1 leading-normal pr-1">{t.desc}</p>
+        <div className={`p-3.5 rounded-[1.25rem] shrink-0 ${isLocked ? 'text-amber-400 bg-amber-400/10' : t.iconColor}`}>
+          <t.icon size={22} />
+        </div>
+
+        <div className="flex-1 text-left min-w-0 pr-2">
+          <span className={`text-[9px] font-black uppercase tracking-wide block ${isLocked ? 'text-amber-500/80' : 'text-slate-500'}`}>
+            {isLocked ? "👑 Premium Upgrade Required" : t.subtitle}
+          </span>
+          <h4 className="text-sm font-black text-white mt-1 leading-snug">{t.title}</h4>
+          <p className="text-[10.5px] text-slate-400 mt-1 leading-normal pr-1">{t.desc}</p>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <motion.div 

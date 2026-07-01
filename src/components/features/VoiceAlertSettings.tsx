@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { ChevronLeft, Volume2, Play, CheckCircle2, ShieldCheck, Speech, Music, Trash2, FolderOpen, Upload } from 'lucide-react';
+import { ChevronLeft, Volume2, Play, CheckCircle2, ShieldCheck, Speech, Music, Trash2, FolderOpen, Upload, Crown } from 'lucide-react';
 import { AlarmConfig, AlarmSound } from '../../types';
 import { triggerInterstitialAd } from '../GoogleAdMob';
 
@@ -8,9 +8,11 @@ interface VoiceAlertSettingsProps {
   config: AlarmConfig;
   setConfig: React.Dispatch<React.SetStateAction<AlarmConfig>>;
   onBack: () => void;
+  isPremium?: boolean;
+  setShowPremiumModal?: (show: boolean) => void;
 }
 
-export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSettingsProps) {
+export function VoiceAlertSettings({ config, setConfig, onBack, isPremium, setShowPremiumModal }: VoiceAlertSettingsProps) {
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [testingSound, setTestingSound] = useState<'theft' | 'low' | null>(null);
@@ -285,7 +287,12 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
   const customTuneInputRef = React.useRef<HTMLInputElement>(null);
 
   const handleConnectReplaceClick = () => {
-    if (!navigator.onLine) {
+    if (!isPremium) {
+      setShowPremiumModal?.(true);
+      return;
+    }
+    const isPaidPremium = localStorage.getItem('is_premium_active') === 'true';
+    if (isPaidPremium || !navigator.onLine) {
       connectInputRef.current?.click();
     } else {
       setActiveAdFor('connect');
@@ -293,7 +300,12 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
   };
 
   const handleFullReplaceClick = () => {
-    if (!navigator.onLine) {
+    if (!isPremium) {
+      setShowPremiumModal?.(true);
+      return;
+    }
+    const isPaidPremium = localStorage.getItem('is_premium_active') === 'true';
+    if (isPaidPremium || !navigator.onLine) {
       fullInputRef.current?.click();
     } else {
       setActiveAdFor('full');
@@ -301,7 +313,12 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
   };
 
   const handleTheftReplaceClick = () => {
-    if (!navigator.onLine) {
+    if (!isPremium) {
+      setShowPremiumModal?.(true);
+      return;
+    }
+    const isPaidPremium = localStorage.getItem('is_premium_active') === 'true';
+    if (isPaidPremium || !navigator.onLine) {
       theftInputRef.current?.click();
     } else {
       setActiveAdFor('theft');
@@ -309,7 +326,12 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
   };
 
   const handleLowReplaceClick = () => {
-    if (!navigator.onLine) {
+    if (!isPremium) {
+      setShowPremiumModal?.(true);
+      return;
+    }
+    const isPaidPremium = localStorage.getItem('is_premium_active') === 'true';
+    if (isPaidPremium || !navigator.onLine) {
       lowInputRef.current?.click();
     } else {
       setActiveAdFor('low');
@@ -317,7 +339,12 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
   };
 
   const handleCustomTuneReplaceClick = () => {
-    if (!navigator.onLine) {
+    if (!isPremium) {
+      setShowPremiumModal?.(true);
+      return;
+    }
+    const isPaidPremium = localStorage.getItem('is_premium_active') === 'true';
+    if (isPaidPremium || !navigator.onLine) {
       customTuneInputRef.current?.click();
     } else {
       setActiveAdFor('custom_tune' as any);
@@ -884,9 +911,14 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
               <div className="flex items-center gap-2 shrink-0">
                 <button 
                   onClick={handleCustomTuneReplaceClick}
-                  className="p-2 px-3 bg-[#00FF88]/15 hover:bg-[#00FF88]/25 border border-[#00FF88]/20 text-[#00FF88] text-[10px] font-extrabold uppercase rounded-xl cursor-pointer transition-all active:scale-95 text-center shrink-0"
+                  className={`p-2 px-3 flex items-center gap-1.5 text-[10px] font-extrabold uppercase rounded-xl cursor-pointer transition-all active:scale-95 text-center shrink-0 ${
+                    isPremium 
+                      ? "bg-[#00FF88]/15 hover:bg-[#00FF88]/25 border border-[#00FF88]/20 text-[#00FF88]"
+                      : "bg-amber-400 text-black hover:bg-amber-500 border border-amber-400/30 font-black"
+                  }`}
                 >
-                  Select File
+                  {!isPremium && <Crown size={11} className="fill-current shrink-0 animate-pulse" />}
+                  <span>{isPremium ? "Select File" : "🔒 Premium"}</span>
                 </button>
                 
                 <input 
@@ -1074,9 +1106,14 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
                 <div className="flex items-center gap-2 mt-1 sm:mt-0">
                   <button 
                     onClick={handleConnectReplaceClick}
-                    className="p-2 px-3 bg-[#00FF88]/15 hover:bg-[#00FF88]/25 border border-[#00FF88]/20 text-[#00FF88] text-[10px] font-extrabold uppercase rounded-xl cursor-pointer transition-all active:scale-95 text-center shrink-0"
+                    className={`p-2 px-3 flex items-center gap-1.5 text-[10px] font-extrabold uppercase rounded-xl cursor-pointer transition-all active:scale-95 text-center shrink-0 ${
+                      isPremium 
+                        ? "bg-[#00FF88]/15 hover:bg-[#00FF88]/25 border border-[#00FF88]/20 text-[#00FF88]"
+                        : "bg-amber-400 text-black hover:bg-amber-500 border border-amber-400/30 font-black"
+                    }`}
                   >
-                    Replace MP3
+                    {!isPremium && <Crown size={11} className="fill-current shrink-0 animate-pulse" />}
+                    <span>{isPremium ? "Replace MP3" : "🔒 Premium"}</span>
                   </button>
                   <input 
                     ref={connectInputRef}
@@ -1122,9 +1159,14 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
                 <div className="flex items-center gap-2 mt-1 sm:mt-0">
                   <button 
                     onClick={handleFullReplaceClick}
-                    className="p-2 px-3 bg-[#00FF88]/15 hover:bg-[#00FF88]/25 border border-[#00FF88]/20 text-[#00FF88] text-[10px] font-extrabold uppercase rounded-xl cursor-pointer transition-all active:scale-95 text-center shrink-0"
+                    className={`p-2 px-3 flex items-center gap-1.5 text-[10px] font-extrabold uppercase rounded-xl cursor-pointer transition-all active:scale-95 text-center shrink-0 ${
+                      isPremium 
+                        ? "bg-[#00FF88]/15 hover:bg-[#00FF88]/25 border border-[#00FF88]/20 text-[#00FF88]"
+                        : "bg-amber-400 text-black hover:bg-amber-500 border border-amber-400/30 font-black"
+                    }`}
                   >
-                    Replace MP3
+                    {!isPremium && <Crown size={11} className="fill-current shrink-0 animate-pulse" />}
+                    <span>{isPremium ? "Replace MP3" : "🔒 Premium"}</span>
                   </button>
                   <input 
                     ref={fullInputRef}
@@ -1170,9 +1212,14 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
                 <div className="flex items-center gap-2 mt-1 sm:mt-0">
                   <button 
                     onClick={handleTheftReplaceClick}
-                    className="p-2 px-3 bg-[#00FF88]/15 hover:bg-[#00FF88]/25 border border-[#00FF88]/20 text-[#00FF88] text-[10px] font-extrabold uppercase rounded-xl cursor-pointer transition-all active:scale-95 text-center shrink-0"
+                    className={`p-2 px-3 flex items-center gap-1.5 text-[10px] font-extrabold uppercase rounded-xl cursor-pointer transition-all active:scale-95 text-center shrink-0 ${
+                      isPremium 
+                        ? "bg-[#00FF88]/15 hover:bg-[#00FF88]/25 border border-[#00FF88]/20 text-[#00FF88]"
+                        : "bg-amber-400 text-black hover:bg-amber-500 border border-amber-400/30 font-black"
+                    }`}
                   >
-                    Replace MP3
+                    {!isPremium && <Crown size={11} className="fill-current shrink-0 animate-pulse" />}
+                    <span>{isPremium ? "Replace MP3" : "🔒 Premium"}</span>
                   </button>
                   <input 
                     ref={theftInputRef}
@@ -1218,9 +1265,14 @@ export function VoiceAlertSettings({ config, setConfig, onBack }: VoiceAlertSett
                 <div className="flex items-center gap-2 mt-1 sm:mt-0">
                   <button 
                     onClick={handleLowReplaceClick}
-                    className="p-2 px-3 bg-[#00FF88]/15 hover:bg-[#00FF88]/25 border border-[#00FF88]/20 text-[#00FF88] text-[10px] font-extrabold uppercase rounded-xl cursor-pointer transition-all active:scale-95 text-center shrink-0"
+                    className={`p-2 px-3 flex items-center gap-1.5 text-[10px] font-extrabold uppercase rounded-xl cursor-pointer transition-all active:scale-95 text-center shrink-0 ${
+                      isPremium 
+                        ? "bg-[#00FF88]/15 hover:bg-[#00FF88]/25 border border-[#00FF88]/20 text-[#00FF88]"
+                        : "bg-amber-400 text-black hover:bg-amber-500 border border-amber-400/30 font-black"
+                    }`}
                   >
-                    Replace MP3
+                    {!isPremium && <Crown size={11} className="fill-current shrink-0 animate-pulse" />}
+                    <span>{isPremium ? "Replace MP3" : "🔒 Premium"}</span>
                   </button>
                   <input 
                     ref={lowInputRef}
