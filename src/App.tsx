@@ -177,7 +177,7 @@ export async function triggerAdMobInterstitial(onDismiss: () => void) {
     try {
       await (AdMob as any).initialize({
         requestTrackingAuthorization: true,
-        initializeForTesting: true, // test mode explicitly enabled
+        initializeForTesting: false,
       });
     } catch (initErr) {
       console.log("AdMob: Already initialized or failed silently:", initErr);
