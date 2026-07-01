@@ -22,7 +22,8 @@ try {
 }
 
 const checkIsPremiumPaid = (): boolean => {
-  return localStorage.getItem('is_premium_active') === 'true';
+  const isPaidPremium = localStorage.getItem('is_premium_active') === 'true';
+  return isPaidPremium;
 };
 
 export const getActivePageType = (type?: 'cleaner' | 'battery' | 'security' | 'sensors' | 'general'): 'cleaner' | 'battery' | 'security' | 'sensors' | 'general' => {
@@ -440,7 +441,9 @@ export const triggerInterstitialAd = async (
   onComplete: () => void,
   type: 'cleaner' | 'battery' | 'security' | 'sensors' | 'general' = 'general'
 ) => {
-  if (checkIsPremiumPaid()) {
+  const isPaidPremium = localStorage.getItem('is_premium_active') === 'true';
+  
+  if (isPaidPremium) {
     console.log("Premium Active - Ads bypassed.");
     onComplete();
     return;

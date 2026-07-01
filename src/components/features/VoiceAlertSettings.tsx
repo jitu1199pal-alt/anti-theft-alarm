@@ -286,69 +286,41 @@ export function VoiceAlertSettings({ config, setConfig, onBack, isPremium, setSh
   const lowInputRef = React.useRef<HTMLInputElement>(null);
   const customTuneInputRef = React.useRef<HTMLInputElement>(null);
 
-  const handleConnectReplaceClick = () => {
+  const triggerVoiceFilePickerWithAd = (inputRef: React.RefObject<HTMLInputElement | null>) => {
     if (!isPremium) {
       setShowPremiumModal?.(true);
       return;
     }
     const isPaidPremium = localStorage.getItem('is_premium_active') === 'true';
-    if (isPaidPremium || !navigator.onLine) {
-      connectInputRef.current?.click();
+    if (isPaidPremium) {
+      // Paid subscription - open immediately without any ads
+      inputRef.current?.click();
     } else {
-      setActiveAdFor('connect');
+      // 7-day trial - run full screen interstitial ad first then open file picker
+      triggerInterstitialAd(() => {
+        inputRef.current?.click();
+      }, 'security');
     }
+  };
+
+  const handleConnectReplaceClick = () => {
+    triggerVoiceFilePickerWithAd(connectInputRef);
   };
 
   const handleFullReplaceClick = () => {
-    if (!isPremium) {
-      setShowPremiumModal?.(true);
-      return;
-    }
-    const isPaidPremium = localStorage.getItem('is_premium_active') === 'true';
-    if (isPaidPremium || !navigator.onLine) {
-      fullInputRef.current?.click();
-    } else {
-      setActiveAdFor('full');
-    }
+    triggerVoiceFilePickerWithAd(fullInputRef);
   };
 
   const handleTheftReplaceClick = () => {
-    if (!isPremium) {
-      setShowPremiumModal?.(true);
-      return;
-    }
-    const isPaidPremium = localStorage.getItem('is_premium_active') === 'true';
-    if (isPaidPremium || !navigator.onLine) {
-      theftInputRef.current?.click();
-    } else {
-      setActiveAdFor('theft');
-    }
+    triggerVoiceFilePickerWithAd(theftInputRef);
   };
 
   const handleLowReplaceClick = () => {
-    if (!isPremium) {
-      setShowPremiumModal?.(true);
-      return;
-    }
-    const isPaidPremium = localStorage.getItem('is_premium_active') === 'true';
-    if (isPaidPremium || !navigator.onLine) {
-      lowInputRef.current?.click();
-    } else {
-      setActiveAdFor('low');
-    }
+    triggerVoiceFilePickerWithAd(lowInputRef);
   };
 
   const handleCustomTuneReplaceClick = () => {
-    if (!isPremium) {
-      setShowPremiumModal?.(true);
-      return;
-    }
-    const isPaidPremium = localStorage.getItem('is_premium_active') === 'true';
-    if (isPaidPremium || !navigator.onLine) {
-      customTuneInputRef.current?.click();
-    } else {
-      setActiveAdFor('custom_tune' as any);
-    }
+    triggerVoiceFilePickerWithAd(customTuneInputRef);
   };
 
   const closeAdAndOpenOptions = () => {

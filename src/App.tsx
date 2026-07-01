@@ -44,6 +44,8 @@ interface AlarmServicePluginType {
     theftAlarm: boolean;
     targetPercentage: number;
     lowBatteryPercentage: number;
+    hasCustomizedTargetPercentage?: boolean;
+    hasCustomizedLowBatteryPercentage?: boolean;
     vibrate: boolean;
     voiceAlertMode?: boolean;
     useHindi?: boolean;
@@ -71,6 +73,8 @@ interface AlarmServicePluginType {
     theftAlarm: boolean;
     targetPercentage: number;
     lowBatteryPercentage: number;
+    hasCustomizedTargetPercentage?: boolean;
+    hasCustomizedLowBatteryPercentage?: boolean;
     vibrate: boolean;
     voiceAlertMode?: boolean;
     useHindi?: boolean;
@@ -134,8 +138,8 @@ export async function triggerAdMobInterstitial(onDismiss: () => void) {
   const trialDurationMs = 7 * 24 * 60 * 60 * 1000;
   const isTrialActive = trialStartStr ? (Date.now() - parseInt(trialStartStr, 10) < trialDurationMs) : false;
   
-  if (isPaidPremium) {
-    console.log("AdMob Interstitial: Paid Premium Active. Bypassing ad sequence instantly.");
+  if (isPaidPremium || isTrialActive) {
+    console.log("AdMob Interstitial: Premium Active (Trial or Paid). Bypassing ad sequence instantly.");
     onDismiss();
     return;
   }
@@ -853,6 +857,21 @@ export default function App() {
       if (pending === 'low' || pending === 'full') {
         setAlarmReason(pending as any);
         setScreen(Screen.LOCK);
+      } else {
+        // Trigger initial startup full screen ad on app launch (first entry) if not premium!
+        const initialPremium = getInitialPremiumStatus();
+        if (!initialPremium.isPremium) {
+          setTimeout(async () => {
+            console.log("AdMob: Triggering initial startup full-screen ad...");
+            try {
+              await triggerAdMobInterstitial(() => {
+                console.log("Initial startup full-screen ad finished.");
+              });
+            } catch (adLaunchErr) {
+              console.warn("Failed to trigger initial startup ad:", adLaunchErr);
+            }
+          }, 2500); // 2.5 seconds delay to allow UI stabilization
+        }
       }
       
       setIsInitialized(true);
@@ -1274,6 +1293,8 @@ export default function App() {
               theftAlarm: securityConfig.theftAlarm,
               targetPercentage: alarmConfig.targetPercentage,
               lowBatteryPercentage: alarmConfig.lowBatteryPercentage,
+              hasCustomizedTargetPercentage: alarmConfig.hasCustomizedTargetPercentage,
+              hasCustomizedLowBatteryPercentage: alarmConfig.hasCustomizedLowBatteryPercentage,
               vibrate: alarmConfig.vibrate,
               voiceAlertMode: alarmConfig.voiceAlert,
               useHindi: alarmConfig.useHindiVoice,
@@ -1292,7 +1313,7 @@ export default function App() {
       }
     };
     syncNativeService();
-  }, [isMonitoring, isInitialized, securityConfig.theftAlarm, alarmConfig.targetPercentage, alarmConfig.lowBatteryPercentage, alarmConfig.vibrate, alarmConfig.voiceAlert, alarmConfig.useHindiVoice, alarmConfig.sound, alarmConfig.connectVoiceSpeakEnabled, alarmConfig.fullVoiceSpeakEnabled, alarmConfig.connectVoiceSpeakText, alarmConfig.fullVoiceSpeakText]);
+  }, [isMonitoring, isInitialized, securityConfig.theftAlarm, alarmConfig.targetPercentage, alarmConfig.lowBatteryPercentage, alarmConfig.vibrate, alarmConfig.voiceAlert, alarmConfig.useHindiVoice, alarmConfig.sound, alarmConfig.connectVoiceSpeakEnabled, alarmConfig.fullVoiceSpeakEnabled, alarmConfig.connectVoiceSpeakText, alarmConfig.fullVoiceSpeakText, alarmConfig.hasCustomizedTargetPercentage, alarmConfig.hasCustomizedLowBatteryPercentage]);
 
   // Refresh Native Service if alarm is disarmed/dismissed but monitoring is kept active
   useEffect(() => {
@@ -1301,6 +1322,8 @@ export default function App() {
         theftAlarm: securityConfig.theftAlarm,
         targetPercentage: alarmConfig.targetPercentage,
         lowBatteryPercentage: alarmConfig.lowBatteryPercentage,
+        hasCustomizedTargetPercentage: alarmConfig.hasCustomizedTargetPercentage,
+        hasCustomizedLowBatteryPercentage: alarmConfig.hasCustomizedLowBatteryPercentage,
         vibrate: alarmConfig.vibrate,
         voiceAlertMode: alarmConfig.voiceAlert,
         useHindi: alarmConfig.useHindiVoice,
@@ -1311,7 +1334,7 @@ export default function App() {
         fullVoiceSpeakText: alarmConfig.fullVoiceSpeakText
       }).catch(e => console.error("Failed to reset Native Service on disarm:", e));
     }
-  }, [alarmReason, isMonitoring, securityConfig.theftAlarm, alarmConfig.targetPercentage, alarmConfig.lowBatteryPercentage, alarmConfig.vibrate, alarmConfig.voiceAlert, alarmConfig.useHindiVoice, alarmConfig.sound, alarmConfig.connectVoiceSpeakEnabled, alarmConfig.fullVoiceSpeakEnabled, alarmConfig.connectVoiceSpeakText, alarmConfig.fullVoiceSpeakText]);
+  }, [alarmReason, isMonitoring, securityConfig.theftAlarm, alarmConfig.targetPercentage, alarmConfig.lowBatteryPercentage, alarmConfig.vibrate, alarmConfig.voiceAlert, alarmConfig.useHindiVoice, alarmConfig.sound, alarmConfig.connectVoiceSpeakEnabled, alarmConfig.fullVoiceSpeakEnabled, alarmConfig.connectVoiceSpeakText, alarmConfig.fullVoiceSpeakText, alarmConfig.hasCustomizedTargetPercentage, alarmConfig.hasCustomizedLowBatteryPercentage]);
 
   useEffect(() => {
     localStorage.setItem('alarmConfig', JSON.stringify(alarmConfig));
@@ -1320,6 +1343,8 @@ export default function App() {
         theftAlarm: securityConfig.theftAlarm,
         targetPercentage: alarmConfig.targetPercentage,
         lowBatteryPercentage: alarmConfig.lowBatteryPercentage,
+        hasCustomizedTargetPercentage: alarmConfig.hasCustomizedTargetPercentage,
+        hasCustomizedLowBatteryPercentage: alarmConfig.hasCustomizedLowBatteryPercentage,
         vibrate: alarmConfig.vibrate,
         voiceAlertMode: alarmConfig.voiceAlert,
         useHindi: alarmConfig.useHindiVoice,
@@ -1453,7 +1478,7 @@ export default function App() {
 
     // 1. High Battery Alarm (Goal Reached)
     // CRITICAL: We check for equality or greater to ensure it triggers exactly at the target
-    if (currentLevelPct >= alarmConfig.targetPercentage && battery.charging && !targetReachedAlerted) {
+    if (alarmConfig.hasCustomizedTargetPercentage && currentLevelPct >= alarmConfig.targetPercentage && battery.charging && !targetReachedAlerted) {
       if (screen !== Screen.LOCK) {
         setAlarmReason('full');
         setScreen(Screen.LOCK);
@@ -1466,7 +1491,7 @@ export default function App() {
     }
 
     // 2. Low Battery Alarm (Critical Level) - Rings only once (lowBatteryAlerted is reset on charging)
-    if (currentLevelPct <= alarmConfig.lowBatteryPercentage && !battery.charging && !lowBatteryAlerted) {
+    if (alarmConfig.hasCustomizedLowBatteryPercentage && currentLevelPct <= alarmConfig.lowBatteryPercentage && !battery.charging && !lowBatteryAlerted) {
       if (screen !== Screen.LOCK) {
         setLowBatteryAlerted(true);
         setAlarmReason('low');
@@ -3208,21 +3233,21 @@ function HomeScreen({
                 <span className="text-2xl font-black text-[#FF007F] font-mono">{config.lowBatteryPercentage}%</span>
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-[10px] text-slate-500 font-mono">10%</span>
+                <span className="text-[10px] text-slate-500 font-mono">1%</span>
                 <input
                   type="range"
-                  min="10"
-                  max="45"
+                  min="1"
+                  max="100"
                   value={config.lowBatteryPercentage}
                   onChange={(e) => setConfig({ ...config, lowBatteryPercentage: parseInt(e.target.value, 10), hasCustomizedLowBatteryPercentage: true })}
                   onMouseUp={() => triggerInterstitialAd(() => {}, 'security')}
                   onTouchEnd={() => triggerInterstitialAd(() => {}, 'security')}
                   className="flex-1 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-[#FF007F]"
                   style={{
-                    background: `linear-gradient(to right, #FF007F 0%, #FF007F ${(config.lowBatteryPercentage - 10) / (45 - 10) * 100}%, #1e293b ${(config.lowBatteryPercentage - 10) / (45 - 10) * 100}%, #1e293b 100%)`
+                    background: `linear-gradient(to right, #FF007F 0%, #FF007F ${(config.lowBatteryPercentage - 1) / (100 - 1) * 100}%, #1e293b ${(config.lowBatteryPercentage - 1) / (100 - 1) * 100}%, #1e293b 100%)`
                   }}
                 />
-                <span className="text-[10px] text-slate-500 font-mono">45%</span>
+                <span className="text-[10px] text-slate-500 font-mono">100%</span>
               </div>
             </div>
 
@@ -3236,10 +3261,10 @@ function HomeScreen({
                 <span className="text-2xl font-black text-[#00FF88] font-mono">{config.targetPercentage}%</span>
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-[10px] text-slate-500 font-mono">50%</span>
+                <span className="text-[10px] text-slate-500 font-mono">1%</span>
                 <input
                   type="range"
-                  min="50"
+                  min="1"
                   max="100"
                   value={config.targetPercentage}
                   onChange={(e) => setConfig({ ...config, targetPercentage: parseInt(e.target.value, 10), hasCustomizedTargetPercentage: true })}
@@ -3247,7 +3272,7 @@ function HomeScreen({
                   onTouchEnd={() => triggerInterstitialAd(() => {}, 'security')}
                   className="flex-1 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-[#00FF88]"
                   style={{
-                    background: `linear-gradient(to right, #00FF88 0%, #00FF88 ${(config.targetPercentage - 50) / (100 - 50) * 100}%, #1e293b ${(config.targetPercentage - 50) / (100 - 50) * 100}%, #1e293b 100%)`
+                    background: `linear-gradient(to right, #00FF88 0%, #00FF88 ${(config.targetPercentage - 1) / (100 - 1) * 100}%, #1e293b ${(config.targetPercentage - 1) / (100 - 1) * 100}%, #1e293b 100%)`
                   }}
                 />
                 <span className="text-[10px] text-slate-500 font-mono">100%</span>
@@ -3363,8 +3388,17 @@ function AlarmSettings({ config, setConfig, onBack, t, theme, setTheme, isPremiu
       return;
     }
 
+    const isPaidPremium = localStorage.getItem('is_premium_active') === 'true';
+
+    if (isPaidPremium) {
+      // Paid subscription - open immediately without any ads
+      fileInputRef.current?.click();
+      return;
+    }
+
     if (!Capacitor.isNativePlatform()) {
-      // Direct pass-through if running in a standard web browser context
+      // Direct pass-through or simulated alert if running in a standard web browser context
+      alert("System Shield Boost Utility:\n\n[Real full-screen app interstitial ad will show here instantly inside your physical APK!]");
       fileInputRef.current?.click();
       return;
     }
@@ -3670,13 +3704,13 @@ function AlarmSettings({ config, setConfig, onBack, t, theme, setTheme, isPremiu
           </div>
           <input 
             type="range" 
-            min="10"
-            max="45"
+            min="1"
+            max="100"
             className="w-full h-2 accent-[#FF007F] bg-slate-800 rounded-full appearance-none cursor-pointer" 
             value={config.lowBatteryPercentage} 
             onChange={e => setConfig({...config, lowBatteryPercentage: parseInt(e.target.value), hasCustomizedLowBatteryPercentage: true})} 
           />
-          <p className="text-[9px] text-[#FF007F]/80 font-bold italic">Adjust کم / न्यूनतम बैटरी अलार्म सीमा (10% - 45%)</p>
+          <p className="text-[9px] text-[#FF007F]/80 font-bold italic">Adjust کم / न्यूनतम बैटरी अलार्म सीमा (1% - 100%)</p>
         </div>
 
         <div className="bento-card space-y-4">
@@ -3686,13 +3720,13 @@ function AlarmSettings({ config, setConfig, onBack, t, theme, setTheme, isPremiu
           </div>
           <input 
             type="range" 
-            min="50"
+            min="1"
             max="100"
             className="w-full h-2 accent-[#00FF88] bg-slate-800 rounded-full appearance-none cursor-pointer" 
             value={config.targetPercentage} 
             onChange={e => setConfig({...config, targetPercentage: parseInt(e.target.value), hasCustomizedTargetPercentage: true})} 
           />
-          <p className="text-[9px] text-[#00FF88]/80 font-bold italic">Adjust full / target maximum charge warning level (50% - 100%)</p>
+          <p className="text-[9px] text-[#00FF88]/80 font-bold italic">Adjust full / target maximum charge warning level (1% - 100%)</p>
         </div>
 
         <div className="bento-card space-y-4">
@@ -4291,7 +4325,7 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
 
   useEffect(() => {
     if (reason === 'theft' || reason === 'low') {
-      const duration = 3000; // 3 seconds for both Tune and Voice Alert (reduced from 10 seconds for Voice Alert)
+      const duration = 2500; // 2.5 seconds for both Tune and Voice Alert
       const timer = setTimeout(() => {
         console.log(`Automatically disarming ${reason} alarm after ${duration}ms`);
         if (onStopRef.current) {
@@ -4358,7 +4392,7 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
         console.log("Playing custom alarm audio loop:", customAudio);
         voiceAudio = new Audio(customAudio);
         voiceAudio.volume = config.volume / 100;
-        voiceAudio.loop = true; // Loop custom tone
+        voiceAudio.loop = !isLow; // Do not loop low battery custom voice alarms
         voiceAudio.play().catch(e => {
           console.warn("Custom alarm voice MP3 playback failed:", e);
         });
@@ -4381,7 +4415,7 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
         const relativeSrc = audioSrc.startsWith('/') ? audioSrc.slice(1) : audioSrc;
         voiceAudio = new Audio(relativeSrc);
         voiceAudio.volume = config.volume / 100;
-        voiceAudio.loop = true;
+        voiceAudio.loop = !isLow; // Do not loop low battery preset voice alarms
         voiceAudio.play().catch(e => {
           console.warn("Preset voice alert MP3 play failed:", e);
         });
@@ -4391,7 +4425,7 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
     // If custom sound is selected, use HTML5 Audio
     if (config.sound === 'Custom' && config.customSoundUrl) {
       const audio = new Audio(config.customSoundUrl);
-      audio.loop = config.repeat;
+      audio.loop = isLow ? false : config.repeat;
       audio.volume = Math.min(1, (config.volume / 100) * 1.5); // Boost volume
       audio.play().catch(e => {
         console.error("Audio playback failed", e);
@@ -4511,7 +4545,11 @@ function AlarmOverlay({ battery, config, security, audioContext, reason, onStop,
     window.addEventListener('click', unlockAudio);
 
     // Only set up synthesizer beeping sound (tune) if Voice Alert mode is NOT active!
-    const soundInterval = !config.voiceAlert ? setInterval(startAlarm, 900) : null;
+    // For low battery alarm (isLow), only trigger startAlarm once rather than looping
+    const soundInterval = (!config.voiceAlert && !isLow) ? setInterval(startAlarm, 900) : null;
+    if (!config.voiceAlert && isLow) {
+      startAlarm();
+    }
     const flashInterval = setInterval(() => {
       document.body.style.backgroundColor = document.body.style.backgroundColor === 'rgb(2, 6, 23)' ? (config.alarmColor || 'rgb(239, 68, 68)') : 'rgb(2, 6, 23)';
     }, 500);
