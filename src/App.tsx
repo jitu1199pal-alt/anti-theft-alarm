@@ -321,7 +321,7 @@ export default function App() {
       if (!response.ok) throw new Error("Update check failed");
       const data = await response.json();
       
-      const currentVersion = "1.0.35";
+      const currentVersion = "1.0.36";
       
       const isNewer = (current: string, latest: string) => {
         const currParts = current.split('.').map(Number);
@@ -2750,7 +2750,7 @@ function SplashScreen({ t }: any) {
         {/* sync_v1.0.26 */}
         <p className="text-slate-400 text-[10px] tracking-[0.4em] font-black mt-3 uppercase flex items-center justify-center gap-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-[#00FF88] animate-ping" />
-          <span>{t.coreSystem} v1.0.35</span>
+          <span>{t.coreSystem} v1.0.36</span>
         </p>
       </div>
     </motion.div>
@@ -3385,7 +3385,7 @@ function HomeScreen({
 
       <footer className="mt-8 flex justify-between items-center text-slate-500 text-[10px] font-bold uppercase tracking-widest">
         <span>{t.mode}: <span className="text-accent">Auto</span></span>
-        <span className="flex items-center gap-2 italic text-slate-600">v1.0.35-{t.stable}</span>
+        <span className="flex items-center gap-2 italic text-slate-600">v1.0.36-{t.stable}</span>
       </footer>
     </motion.div>
   );
@@ -3895,7 +3895,7 @@ function AlarmSettings({ config, setConfig, onBack, t, theme, setTheme, isPremiu
               </div>
               <div className="text-left">
                 <p className="text-[9px] font-bold uppercase tracking-widest text-blue-400">Play Store Updates / अपडेट्स</p>
-                <p className="text-xs font-bold text-white mt-0.5">Current: v1.0.35 (Stable)</p>
+                <p className="text-xs font-bold text-white mt-0.5">Current: v1.0.36 (Stable)</p>
               </div>
             </div>
             <button 

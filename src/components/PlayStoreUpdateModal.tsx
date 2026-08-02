@@ -73,7 +73,7 @@ export function PlayStoreUpdateModal({ show, onClose, updateInfo }: PlayStoreUpd
             <div className="bg-slate-950/60 rounded-2xl p-3 border border-white/5 flex items-center justify-around font-mono text-xs font-black">
               <div className="text-left">
                 <span className="text-[8px] font-bold text-slate-500 block uppercase">Installed</span>
-                <span className="text-slate-400">v1.0.35</span>
+                <span className="text-slate-400">v1.0.36</span>
               </div>
               <ArrowRight size={14} className="text-slate-600 shrink-0" />
               <div className="text-right">

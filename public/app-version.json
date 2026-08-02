@@ -1,13 +1,13 @@
 {
-  "latestVersion": "1.0.35",
+  "latestVersion": "1.0.36",
   "minRequiredVersion": "1.0.0",
   "updateUrl": "https://play.google.com/store/apps/details?id=com.chargeguard.pro",
   "releaseNotes": [
-    "🚀 Locked features activated (Custom Voice replacement & local MP3s)!",
-    "🔋 Added Advanced Charging Speed Test & Health diagnostics doctor.",
-    "🛡️ Improved theft-detection algorithm for physical pocket motion.",
-    "⚡ Major performance improvements & critical background alerts bug fixes."
+    "🔊 Fixed Voice Alert & Tune toggle retention issue.",
+    "📱 Improved alarm lock screen automatic dismissal & app minimization on stop.",
+    "🔋 Dynamic custom low-battery percentage display on alarm screen.",
+    "⚡ System stability & background service optimizations."
   ],
   "isForceUpdate": false,
-  "releaseDate": "2026-07-01"
+  "releaseDate": "2026-08-01"
 }
