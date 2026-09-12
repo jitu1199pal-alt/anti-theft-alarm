@@ -7,8 +7,8 @@ android {
         applicationId "com.chargeguard.pro.alarm"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 36
-        versionName "1.0.36"
+        versionCode 37
+        versionName "1.0.37"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -21,9 +21,22 @@ android {
             def keystoreFile = file("release.keystore")
             if (keystoreFile.exists()) {
                 storeFile keystoreFile
-                storePassword System.getenv("SIGNING_STORE_PASSWORD") ?: System.getProperty("SIGNING_STORE_PASSWORD") ?: "dummy_pass_to_avoid_null"
-                keyAlias System.getenv("SIGNING_KEY_ALIAS") ?: System.getProperty("SIGNING_KEY_ALIAS") ?: "dummy_alias_to_avoid_null"
-                keyPassword System.getenv("SIGNING_KEY_PASSWORD") ?: System.getProperty("SIGNING_KEY_PASSWORD") ?: "dummy_pass_to_avoid_null"
+                def pAlias = System.getenv("SIGNING_KEY_ALIAS") ?: System.getProperty("SIGNING_KEY_ALIAS")
+                def pStorePass = System.getenv("SIGNING_STORE_PASSWORD") ?: System.getProperty("SIGNING_STORE_PASSWORD")
+                def pKeyPass = System.getenv("SIGNING_KEY_PASSWORD") ?: System.getProperty("SIGNING_KEY_PASSWORD")
+
+                def infoFile = rootProject.file("../keystore-info.txt")
+                if ((!pAlias || !pStorePass || !pKeyPass) && infoFile.exists()) {
+                    infoFile.readLines().each { line ->
+                        if (line.startsWith("ALIAS=")) pAlias = pAlias ?: line.substring(6).trim()
+                        if (line.startsWith("KEYSTORE_PASSWORD=")) pStorePass = pStorePass ?: line.substring(18).trim()
+                        if (line.startsWith("KEY_PASSWORD=")) pKeyPass = pKeyPass ?: line.substring(13).trim()
+                    }
+                }
+
+                storePassword pStorePass ?: "0c9b0bb021250d10"
+                keyAlias pAlias ?: "charging_alarm_pro_key"
+                keyPassword pKeyPass ?: "0c9b0bb021250d10"
             }
         }
     }
