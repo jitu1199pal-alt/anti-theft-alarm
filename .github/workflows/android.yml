@@ -9,7 +9,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       HAS_SIGNING_KEY: ${{ secrets.SIGNING_KEY != '' }}
 
     steps:
@@ -36,8 +35,17 @@ jobs:
       - name: Build Web Assets
         run: npm run build
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Setup Android SDK Platform & Licenses
+        run: |
+          echo "Configuring Android SDK..."
+          SDKMANAGER="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -f "$SDKMANAGER" ]; then
+            SDKMANAGER="$(which sdkmanager || true)"
+          fi
+          if [ -n "$SDKMANAGER" ]; then
+            yes | $SDKMANAGER --licenses || true
+            $SDKMANAGER "platforms;android-36" "build-tools;36.0.0" "platform-tools" || true
+          fi
 
       - name: Capacitor Sync
         run: npx cap sync android
