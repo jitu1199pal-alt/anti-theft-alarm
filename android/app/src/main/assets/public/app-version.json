@@ -1,0 +1,13 @@
+{
+  "latestVersion": "1.0.37",
+  "minRequiredVersion": "1.0.0",
+  "updateUrl": "https://play.google.com/store/apps/details?id=com.chargeguard.pro.alarm",
+  "releaseNotes": [
+    "🔊 Fixed Voice Alert & Tune toggle retention issue.",
+    "📱 Improved alarm lock screen automatic dismissal & app minimization on stop.",
+    "🔋 Dynamic custom low-battery percentage display on alarm screen.",
+    "⚡ System stability & background service optimizations."
+  ],
+  "isForceUpdate": false,
+  "releaseDate": "2026-09-12"
+}
