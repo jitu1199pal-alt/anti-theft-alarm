@@ -2,7 +2,7 @@ name: Build Native Android APK
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ '**' ]
   workflow_dispatch:
 
 jobs:
@@ -71,7 +71,7 @@ jobs:
         run: |
           echo "=== Diagnostic Check: Verifying Secrets Presence ==="
           if [ -z "$SIGNING_KEY" ]; then
-            echo "⚠️ SIGNING_KEY secret is MISSING or EMPTY! Build will fall back to unsigned."
+            echo "⚠️ SIGNING_KEY secret is MISSING or EMPTY! Restoring keystore from project data..."
           else
             echo "✅ SIGNING_KEY secret is present."
           fi
@@ -87,7 +87,13 @@ jobs:
           echo "=================================================="
 
           if [ -z "$SIGNING_KEY" ]; then
-            echo "No SIGNING_KEY secret found. Fallback build will be unsigned."
+            echo "No SIGNING_KEY secret found in environment. Restoring keystore from project data..."
+            node generate-keystore.cjs || true
+            if [ -f "android/app/release.keystore" ]; then
+              echo "✅ Keystore restored successfully from project data!"
+            else
+              echo "⚠️ Could not restore keystore. Build will be unsigned."
+            fi
           else
             echo "SIGNING_KEY found. Decoding cleanly into android/app/release.keystore..."
             mkdir -p android/app
@@ -109,43 +115,37 @@ jobs:
         run: |
           cd android
           if [ -f "app/release.keystore" ]; then
-            echo "--- Detected release.keystore! Building Signed APK and Signed AAB ---"
-            ./gradlew clean bundleRelease assembleRelease \
-              -Pandroid.injected.version.code=${{ github.run_number }} \
-              -Pandroid.injected.version.name="1.0.${{ github.run_number }}" \
-              --stacktrace
+            echo "--- Detected release.keystore! Building Signed APK and Signed AAB (v1.0.38 - Code 38) ---"
+            ./gradlew clean bundleRelease assembleRelease --stacktrace
           else
             echo "--- No release.keystore found. Building fallback Unsigned AAB and Debug Testing APK ---"
-            ./gradlew clean bundleRelease assembleDebug \
-              -Pandroid.injected.version.code=${{ github.run_number }} \
-              -Pandroid.injected.version.name="1.0.${{ github.run_number }}" \
-              --stacktrace
+            ./gradlew clean bundleRelease assembleDebug --stacktrace
           fi
 
       - name: Upload Signed Release APK (Direct Install)
         if: env.HAS_SIGNING_KEY == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: Charging-Alarm-Pro-v1.0.${{ github.run_number }}-Signed-APK
+          name: Charging-Alarm-Pro-v1.0.38-Signed-APK
           path: android/app/build/outputs/apk/release/app-release.apk
 
       - name: Upload Signed Play Store Bundle (AAB)
         if: env.HAS_SIGNING_KEY == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: Charging-Alarm-Pro-v1.0.${{ github.run_number }}-Signed-AAB
+          name: Charging-Alarm-Pro-v1.0.38-Signed-AAB
           path: android/app/build/outputs/bundle/release/app-release.aab
 
       - name: Upload Unsigned Play Store Bundle (AAB) (Fallback)
         if: env.HAS_SIGNING_KEY != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: Charging-Alarm-Pro-v1.0.${{ github.run_number }}-Unsigned-AAB
+          name: Charging-Alarm-Pro-v1.0.38-Unsigned-AAB
           path: android/app/build/outputs/bundle/release/app-release.aab
 
       - name: Upload Testing APK (Fallback Installable)
         if: env.HAS_SIGNING_KEY != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: Charging-Alarm-Pro-v1.0.${{ github.run_number }}-Testing-APK
+          name: Charging-Alarm-Pro-v1.0.38-Testing-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
